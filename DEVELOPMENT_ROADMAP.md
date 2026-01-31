@@ -219,9 +219,9 @@
 
 ---
 
-## SPRINT 3: UX Polish & Advanced Features (Minggu 10-13)
+## SPRINT 3: AI Agent & Prize Track Features (Minggu 10-13)
 
-### Objective: Yellow Network integration, final polish, launch prep
+### Objective: Voiceflow integration, RWA (Arc), Uniswap v4 yield, launch prep
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -229,25 +229,40 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  FRONTEND (2 devs)                                              │
-│  ├── [ ] Yellow Network UX                                     │
-│  │   ├── Session key signing flow                              │
-│  │   ├── Instant confirmation UI                               │
-│  │   └── Background settlement indicator                       │
-│  ├── [ ] Advanced Features                                     │
-│  │   ├── Recurring payments                                    │
-│  │   ├── Payment links / QR codes                              │
-│  │   └── Merchant dashboard (basic)                            │
+│  ├── [ ] Voiceflow Chat Interface                              │
+│  │   ├── Embed Voiceflow webchat widget                        │
+│  │   ├── Voice mode trigger UI                                 │
+│  │   └── Chat conversation display                             │
+│  ├── [ ] RWA Dashboard (/app/rwa)                              │
+│  │   ├── Collateral card (tokenized invoices)                  │
+│  │   ├── Borrow/repay UI                                       │
+│  │   ├── Health factor display                                 │
+│  │   └── Auto-repay toggle                                     │
+│  ├── [ ] Yield Management UI (/app/yield)                      │
+│  │   ├── Uniswap v4 strategy cards                             │
+│  │   ├── Position dashboard (APY, P&L)                         │
+│  │   └── Aggregate deposit modal                               │
 │  ├── [ ] Mobile Responsive                                     │
 │  ├── [ ] Error handling & edge cases                           │
 │  └── [ ] Performance optimization                              │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  BACKEND (2 devs)                                               │
-│  ├── [ ] Yellow Network Integration                            │
-│  │   ├── State channel setup                                   │
-│  │   ├── Session key management                                │
-│  │   ├── Off-chain payment recording                           │
-│  │   └── Settlement reconciliation                             │
+│  ├── [ ] Voiceflow Integration                                 │
+│  │   ├── Webhook endpoints for agent actions                   │
+│  │   ├── Intent handlers (payment, yield, swap, borrow)        │
+│  │   ├── Entity extraction & validation                        │
+│  │   └── Response formatting for chat                          │
+│  ├── [ ] Arc RWA Integration                                   │
+│  │   ├── RWA collateral API endpoints                          │
+│  │   ├── Borrow/repay logic                                    │
+│  │   ├── Health factor calculation                             │
+│  │   └── Auto-repay cron job                                   │
+│  ├── [ ] Uniswap v4 Yield Integration                          │
+│  │   ├── Strategy listing API                                  │
+│  │   ├── Deposit/withdraw endpoints                            │
+│  │   ├── Position tracking & P&L calc                          │
+│  │   └── Auto-rebalance service                                │
 │  ├── [ ] Security Hardening                                    │
 │  │   ├── Rate limiting                                         │
 │  │   ├── Input validation                                      │
@@ -261,31 +276,39 @@
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  SMART CONTRACTS (1-2 devs)                                     │
-│  ├── [ ] Uniswap v4 Hook (Optional - Post-MVP)                 │
-│  │   ├── Auto-yield deposit hook                               │
-│  │   ├── Threshold-based triggers                              │
-│  │   └── Withdrawal mechanism                                  │
+│  ├── [ ] YieldStrategyManager.sol (Arc)                        │
+│  │   ├── Uniswap v4 pool integration                           │
+│  │   ├── Auto-rebalancing logic                                │
+│  │   └── Position management functions                         │
+│  ├── [ ] RWABorrowing.sol (Arc)                                │
+│  │   ├── Collateral deposit/withdrawal                         │
+│  │   ├── Borrow/repay functions                                │
+│  │   ├── Health factor calculation                             │
+│  │   └── Auto-repay hook                                       │
 │  ├── [ ] Security Audit Preparation                            │
 │  │   ├── Documentation                                         │
 │  │   ├── Test coverage > 90%                                   │
 │  │   └── Formal verification (optional)                        │
-│  └── [ ] Mainnet deployment preparation                        │
+│  └── [ ] Deploy to Arc testnet                                 │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  DATABASE                                                       │
-│  ├── session_keys (user_id, key_hash, permissions, expires)    │
-│  ├── state_channel_records (off-chain payment logs)            │
-│  ├── analytics_events (for tracking)                           │
-│  └── Backup & recovery procedures                              │
+│  ├── yield_positions (user_id, strategy, amount, entry_ts)     │
+│  ├── rwa_collateral (user_id, asset_type, face_value, ltv)     │
+│  ├── rwa_borrows (user_id, borrowed, health_factor, auto_repay)│
+│  ├── chat_logs (user_id, message, intent, action_taken)        │
+│  └── analytics_events (for tracking)                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Deliverables Sprint 3:**
-- Instant UX dengan Yellow Network
+- Voiceflow AI agent functional (all 3 features: payment, yield, swap)
+- RWA borrowing operational on Arc
+- Uniswap v4 yield deposits working
+- Auto-repay from yield enabled
 - Production-ready security
 - Monitoring dashboard
-- Mainnet deployment ready
 
 ---
 
@@ -340,7 +363,7 @@
 │ INFRASTRUCTURE  │ Vercel (frontend), Railway/AWS (backend)      │
 │                 │ Alchemy/Infura (RPC), TheGraph (indexing)     │
 ├─────────────────┼───────────────────────────────────────────────┤
-│ EXTERNAL APIs   │ Circle, LI.FI, Yellow Network, ENS            │
+│ EXTERNAL APIs   │ Circle, LI.FI, Arc, Uniswap v4, Voiceflow     │
 └─────────────────┴───────────────────────────────────────────────┘
 ```
 
@@ -363,7 +386,9 @@ merge-pay/
 │       │   ├── services/
 │       │   │   ├── circle/
 │       │   │   ├── lifi/
-│       │   │   ├── yellow/
+│       │   │   ├── voiceflow/
+│       │   │   ├── arc-rwa/
+│       │   │   ├── uniswap-v4/
 │       │   │   └── sourcing-engine/
 │       │   ├── jobs/
 │       │   └── utils/
@@ -391,9 +416,10 @@ merge-pay/
 ├─────────────────────────────────────────────────────────────────┤
 │ 1. Circle Gateway API access (apply early)                     │
 │ 2. LI.FI API partnership/rate limits                           │
-│ 3. Yellow Network SDK availability                             │
+│ 3. Voiceflow workspace setup                                   │
 │ 4. Arc Blockchain documentation & testnet access               │
-│ 5. Smart contract audit timeline (4-6 weeks typical)           │
+│ 5. Uniswap v4 SDK availability for Arc                         │
+│ 6. Smart contract audit timeline (4-6 weeks typical)           │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -401,7 +427,7 @@ merge-pay/
 ├─────────────────────────────────────────────────────────────────┤
 │ • Start external API integrations early (Sprint 1)             │
 │ • Have fallback bridge providers if LI.FI unavailable          │
-│ • Build MVP without Yellow (add later if SDK delayed)          │
+│ • Build direct UI first, add Voiceflow later if delayed        │
 │ • Engage auditors at Sprint 2 start                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -419,14 +445,15 @@ MUST HAVE (MVP)
 └── 5. Transaction tracking
 
 SHOULD HAVE (v1.0)
-├── 6. Yellow Network instant UX
-├── 7. ENS resolution
-└── 8. Merchant dashboard
+├── 6. Voiceflow AI agent
+├── 7. RWA borrowing (Arc)
+├── 8. Uniswap v4 yield
+└── 9. ENS resolution
 
 NICE TO HAVE (v2.0)
-├── 9. Uniswap v4 auto-yield
 ├── 10. Recurring payments
-└── 11. Mobile app
+├── 11. Merchant dashboard
+└── 12. Mobile app
 ```
 
 ---
