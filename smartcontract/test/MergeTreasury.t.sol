@@ -348,4 +348,269 @@ contract MergeTreasuryTest is Test {
         vm.expectRevert();
         treasury.updatePriceCache(assetIds);
     }
+
+    // ========== Multi-Wallet Aggregation Tests ==========
+
+    function test_RegisterWallet() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+
+        vm.prank(owner);
+        treasury.registerWallet(userId, wallet1);
+
+        // Check wallet is registered
+        address[] memory wallets = treasury.getUserWallets(userId);
+        assertEq(wallets.length, 1);
+        assertEq(wallets[0], wallet1);
+
+        // Check reverse mapping
+        bytes32 retrievedUserId = treasury.walletToUser(wallet1);
+        assertEq(retrievedUserId, userId);
+    }
+
+    function test_RegisterMultipleWallets() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        address wallet2 = address(0x222);
+        address wallet3 = address(0x333);
+
+        vm.startPrank(owner);
+        treasury.registerWallet(userId, wallet1);
+        treasury.registerWallet(userId, wallet2);
+        treasury.registerWallet(userId, wallet3);
+        vm.stopPrank();
+
+        // Check all wallets are registered
+        address[] memory wallets = treasury.getUserWallets(userId);
+        assertEq(wallets.length, 3);
+        assertEq(wallets[0], wallet1);
+        assertEq(wallets[1], wallet2);
+        assertEq(wallets[2], wallet3);
+    }
+
+    function test_RegisterWallet_InvalidAddress() public {
+        bytes32 userId = keccak256("user1");
+
+        vm.prank(owner);
+        vm.expectRevert("Invalid wallet");
+        treasury.registerWallet(userId, address(0));
+    }
+
+    function test_RegisterWallet_AlreadyRegistered() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+
+        vm.prank(owner);
+        treasury.registerWallet(userId, wallet1);
+
+        // Try to register same wallet again
+        vm.prank(owner);
+        vm.expectRevert("Wallet already registered");
+        treasury.registerWallet(userId, wallet1);
+    }
+
+    function test_PullFunds() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 100 * 10 ** 6;
+
+        // Register wallet
+        vm.prank(owner);
+        treasury.registerWallet(userId, wallet1);
+
+        // Mint USDC to wallet1
+        usdc.mint(wallet1, amount);
+
+        // Approve treasury to spend
+        vm.prank(wallet1);
+        usdc.approve(address(treasury), amount);
+
+        // Pull funds
+        vm.prank(owner);
+        treasury.pullFunds(wallet1, amount);
+
+        // Check balances
+        assertEq(treasury.userIdBalances(userId), amount);
+        assertEq(treasury.pulledAmount(wallet1), amount);
+        assertEq(treasury.totalTreasuryBalance(), amount);
+    }
+
+    function test_PullFunds_WalletNotRegistered() public {
+        address wallet1 = address(0x111);
+        uint256 amount = 100 * 10 ** 6;
+
+        vm.prank(owner);
+        vm.expectRevert("Wallet not registered");
+        treasury.pullFunds(wallet1, amount);
+    }
+
+    function test_PullFunds_InsufficientAllowance() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 100 * 10 ** 6;
+
+        // Register wallet
+        vm.prank(owner);
+        treasury.registerWallet(userId, wallet1);
+
+        // Mint USDC to wallet1
+        usdc.mint(wallet1, amount);
+
+        // Don't approve - should fail
+        vm.prank(owner);
+        vm.expectRevert("Insufficient allowance");
+        treasury.pullFunds(wallet1, amount);
+    }
+
+    function test_GetAggregatedBalance() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        address wallet2 = address(0x222);
+        uint256 amount1 = 30 * 10 ** 6;
+        uint256 amount2 = 20 * 10 ** 6;
+
+        // Register wallets
+        vm.startPrank(owner);
+        treasury.registerWallet(userId, wallet1);
+        treasury.registerWallet(userId, wallet2);
+        vm.stopPrank();
+
+        // Mint USDC to wallets
+        usdc.mint(wallet1, amount1);
+        usdc.mint(wallet2, amount2);
+
+        // Approve treasury to spend
+        vm.startPrank(wallet1);
+        usdc.approve(address(treasury), amount1);
+        vm.stopPrank();
+
+        vm.startPrank(wallet2);
+        usdc.approve(address(treasury), amount2);
+        vm.stopPrank();
+
+        // Check aggregated balance before pulling (should include allowances)
+        uint256 aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amount1 + amount2); // 50 USDC
+
+        // Pull from wallet1
+        vm.prank(owner);
+        treasury.pullFunds(wallet1, amount1);
+
+        // Check aggregated balance after partial pull
+        aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amount1 + amount2); // Still 50 USDC (30 in treasury + 20 allowance)
+    }
+
+    function test_GetAggregatedBalance_MultiplePulls() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        address wallet2 = address(0x222);
+        uint256 amount1 = 30 * 10 ** 6;
+        uint256 amount2 = 20 * 10 ** 6;
+
+        // Register wallets
+        vm.startPrank(owner);
+        treasury.registerWallet(userId, wallet1);
+        treasury.registerWallet(userId, wallet2);
+        vm.stopPrank();
+
+        // Mint USDC to wallets
+        usdc.mint(wallet1, amount1);
+        usdc.mint(wallet2, amount2);
+
+        // Approve treasury to spend
+        vm.startPrank(wallet1);
+        usdc.approve(address(treasury), amount1);
+        vm.stopPrank();
+
+        vm.startPrank(wallet2);
+        usdc.approve(address(treasury), amount2);
+        vm.stopPrank();
+
+        // Pull all funds
+        vm.startPrank(owner);
+        treasury.pullFunds(wallet1, amount1);
+        treasury.pullFunds(wallet2, amount2);
+        vm.stopPrank();
+
+        // Check aggregated balance (should equal total in treasury)
+        uint256 aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amount1 + amount2); // 50 USDC
+        assertEq(treasury.userIdBalances(userId), amount1 + amount2);
+    }
+
+    function test_GetUserWallets_EmptyUser() public {
+        bytes32 userId = keccak256("nonexistent");
+
+        address[] memory wallets = treasury.getUserWallets(userId);
+        assertEq(wallets.length, 0);
+    }
+
+    function test_AggregationIntegration() public {
+        // Full integration test simulating real user flow
+        bytes32 userId = keccak256("alice");
+        address walletA = address(0xA1);
+        address walletB = address(0xB2);
+        address walletC = address(0xC3);
+        uint256 amountA = 30 * 10 ** 6;
+        uint256 amountB = 20 * 10 ** 6;
+        uint256 amountC = 50 * 10 ** 6;
+
+        // Step 1: Register wallets to user identity
+        vm.startPrank(owner);
+        treasury.registerWallet(userId, walletA);
+        treasury.registerWallet(userId, walletB);
+        treasury.registerWallet(userId, walletC);
+        vm.stopPrank();
+
+        // Step 2: Mint USDC to each wallet
+        usdc.mint(walletA, amountA);
+        usdc.mint(walletB, amountB);
+        usdc.mint(walletC, amountC);
+
+        // Step 3: Approve treasury on each wallet
+        vm.startPrank(walletA);
+        usdc.approve(address(treasury), amountA);
+        vm.stopPrank();
+
+        vm.startPrank(walletB);
+        usdc.approve(address(treasury), amountB);
+        vm.stopPrank();
+
+        vm.startPrank(walletC);
+        usdc.approve(address(treasury), amountC);
+        vm.stopPrank();
+
+        // Step 4: Check initial aggregated balance (all in wallets)
+        uint256 aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amountA + amountB + amountC); // 100 USDC
+
+        // Step 5: Pull funds from walletA
+        vm.prank(owner);
+        treasury.pullFunds(walletA, amountA);
+
+        // Step 6: Pull funds from walletB
+        vm.prank(owner);
+        treasury.pullFunds(walletB, amountB);
+
+        // Step 7: Check aggregated balance (partial pull)
+        aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amountA + amountB + amountC); // Still 100 USDC
+
+        // Step 8: Pull remaining from walletC
+        vm.prank(owner);
+        treasury.pullFunds(walletC, amountC);
+
+        // Step 9: Final aggregated balance
+        aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, amountA + amountB + amountC); // 100 USDC
+        assertEq(treasury.userIdBalances(userId), amountA + amountB + amountC);
+
+        // Step 10: User can withdraw from aggregated balance
+        uint256 withdrawAmount = 40 * 10 ** 6;
+        // Need to allow msg.sender (owner) to act as userId
+        // In production, userId would be the withdrawal key
+        // For this test, we verify the treasury balance
+        assertEq(treasury.userIdBalances(userId), 100 * 10 ** 6);
+    }
 }

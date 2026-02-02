@@ -18,8 +18,22 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     // Stork Oracle for price data
     IStorkOracle public immutable storkOracle;
 
-    // Track user balances
+    // Track user balances (address-based for existing functionality)
     mapping(address => uint256) public userBalances;
+
+    // ========== Multi-Wallet Aggregation ==========
+
+    // Mapping from userId to their aggregated balance
+    mapping(bytes32 userId => uint256) public userIdBalances;
+
+    // Mapping from userId to their array of approved wallet addresses
+    mapping(bytes32 userId => address[] wallets) public userWallets;
+
+    // Mapping from wallet address to userId (for reverse lookup)
+    mapping(address wallet => bytes32 userId) public walletToUser;
+
+    // Track how much has been pulled from each wallet
+    mapping(address wallet => uint256) public pulledAmount;
 
     // Price caching to reduce oracle calls
     uint256 public lastPriceUpdate;
@@ -68,6 +82,11 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         int256 threshold,
         bool actionTaken
     );
+
+    // ========== Multi-Wallet Aggregation Events ==========
+
+    event WalletRegistered(bytes32 indexed userId, address wallet);
+    event FundsPulled(bytes32 indexed userId, address indexed wallet, uint256 amount);
 
     constructor(address _usdc, address _storkOracle) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC address");
@@ -181,6 +200,88 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         require(amount <= totalTreasuryBalance, "Insufficient balance");
         require(usdc.transfer(owner(), amount), "Transfer failed");
         totalTreasuryBalance -= amount;
+    }
+
+    // ========== Multi-Wallet Aggregation Functions ==========
+
+    /**
+     * @notice Register a wallet to a user identity
+     * @dev Maps wallet to userId for reverse lookup
+     * @param userId The user's identity hash (e.g., from Circle User-Controlled Wallet)
+     * @param wallet The EOA wallet address to register
+     */
+    function registerWallet(bytes32 userId, address wallet) external {
+        require(wallet != address(0), "Invalid wallet");
+        require(walletToUser[wallet] == bytes32(0), "Wallet already registered");
+
+        userWallets[userId].push(wallet);
+        walletToUser[wallet] = userId;
+
+        emit WalletRegistered(userId, wallet);
+    }
+
+    /**
+     * @notice Pull USDC from an approved wallet to the treasury
+     * @dev Requires prior USDC approval on the wallet
+     * @param wallet The wallet address to pull from
+     * @param amount The amount of USDC to pull
+     */
+    function pullFunds(address wallet, uint256 amount) external nonReentrant {
+        bytes32 userId = walletToUser[wallet];
+        require(userId != bytes32(0), "Wallet not registered");
+        require(amount > 0, "Amount must be greater than 0");
+
+        // Check if we can pull (allowance)
+        uint256 currentAllowance = usdc.allowance(wallet, address(this));
+        require(currentAllowance >= amount, "Insufficient allowance");
+
+        // Pull USDC from wallet
+        require(
+            usdc.transferFrom(wallet, address(this), amount),
+            "Transfer failed"
+        );
+
+        // Update aggregated balance
+        userIdBalances[userId] += amount;
+        totalTreasuryBalance += amount;
+        pulledAmount[wallet] += amount;
+
+        emit FundsPulled(userId, wallet, amount);
+    }
+
+    /**
+     * @notice Get aggregated balance for a user identity
+     * @dev Returns sum of treasury balance + available allowance from linked wallets
+     * @param userId The user's identity hash
+     * @return balance The aggregated balance
+     */
+    function getAggregatedBalance(
+        bytes32 userId
+    ) external view returns (uint256 balance) {
+        balance = userIdBalances[userId];
+
+        // Add available allowance from all linked wallets
+        address[] storage wallets = userWallets[userId];
+        for (uint256 i = 0; i < wallets.length; i++) {
+            uint256 allowance = usdc.allowance(wallets[i], address(this));
+            uint256 alreadyPulled = pulledAmount[wallets[i]];
+            if (allowance > alreadyPulled) {
+                balance += (allowance - alreadyPulled);
+            }
+        }
+
+        return balance;
+    }
+
+    /**
+     * @notice Get all wallet addresses linked to a user identity
+     * @param userId The user's identity hash
+     * @return wallets Array of wallet addresses
+     */
+    function getUserWallets(
+        bytes32 userId
+    ) external view returns (address[] memory wallets) {
+        return userWallets[userId];
     }
 
     // ========== Oracle Functions ==========
