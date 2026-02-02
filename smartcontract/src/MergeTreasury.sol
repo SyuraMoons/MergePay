@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import "openzeppelin-contracts/contracts/access/Ownable.sol";
-import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import "openzeppelin-contracts/token/ERC20/IERC20.sol";
+import "openzeppelin-contracts/access/Ownable.sol";
+import "openzeppelin-contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IStorkOracle.sol";
 
 /**
@@ -34,6 +34,12 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
     // Track how much has been pulled from each wallet
     mapping(address wallet => uint256) public pulledAmount;
+
+    // Maximum number of wallets that can be registered to one userId
+    uint256 public constant MAX_WALLETS_PER_USER = 50;
+
+    // Track emergency withdrawals separately for proper accounting
+    uint256 public emergencyWithdrawnTotal;
 
     // Price caching to reduce oracle calls
     uint256 public lastPriceUpdate;
@@ -87,6 +93,8 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
     event WalletRegistered(bytes32 indexed userId, address wallet);
     event FundsPulled(bytes32 indexed userId, address indexed wallet, uint256 amount);
+    event WithdrawalByUserId(bytes32 indexed userId, uint256 amount, address indexed to, uint256 timestamp);
+    event EmergencyWithdrawal(address indexed owner, uint256 amount, string note);
 
     constructor(address _usdc, address _storkOracle) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC address");
@@ -153,6 +161,42 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Withdraw funds from userId balance
+     * @dev Only wallets registered to this userId can initiate withdrawal
+     * @param userId The user's identity hash (keccak256 of Circle userId)
+     * @param amount The amount to withdraw
+     * @param to Destination address
+     */
+    function withdrawByUserId(bytes32 userId, uint256 amount, address to) external nonReentrant {
+        require(to != address(0), "Invalid destination");
+        require(amount > 0, "Amount must be greater than 0");
+        require(userIdBalances[userId] >= amount, "Insufficient balance");
+
+        // Verify msg.sender is authorized to withdraw for this userId
+        // Must be one of the wallets registered to this userId
+        bool isAuthorized = false;
+        address[] storage wallets = userWallets[userId];
+
+        for (uint256 i = 0; i < wallets.length; i++) {
+            if (wallets[i] == msg.sender) {
+                isAuthorized = true;
+                break;
+            }
+        }
+
+        require(isAuthorized, "Not authorized: sender not registered to this userId");
+
+        // Update balances
+        userIdBalances[userId] -= amount;
+        totalTreasuryBalance -= amount;
+
+        // Transfer USDC
+        require(usdc.transfer(to, amount), "Transfer failed");
+
+        emit WithdrawalByUserId(userId, amount, to, block.timestamp);
+    }
+
+    /**
      * @notice Direct deposit to treasury (alternative to receivePayment)
      * @param amount Amount to deposit
      */
@@ -197,9 +241,13 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @notice Emergency withdraw (only owner)
      */
     function emergencyWithdraw(uint256 amount) external onlyOwner {
-        require(amount <= totalTreasuryBalance, "Insufficient balance");
+        uint256 availableBalance = totalTreasuryBalance - emergencyWithdrawnTotal;
+        require(amount <= availableBalance, "Insufficient available balance");
         require(usdc.transfer(owner(), amount), "Transfer failed");
-        totalTreasuryBalance -= amount;
+
+        emergencyWithdrawnTotal += amount;
+
+        emit EmergencyWithdrawal(owner(), amount, "Emergency withdrawal - accounting offset tracked");
     }
 
     // ========== Multi-Wallet Aggregation Functions ==========
@@ -213,6 +261,8 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     function registerWallet(bytes32 userId, address wallet) external {
         require(wallet != address(0), "Invalid wallet");
         require(walletToUser[wallet] == bytes32(0), "Wallet already registered");
+        require(msg.sender == wallet, "Only wallet owner can register");
+        require(userWallets[userId].length < MAX_WALLETS_PER_USER, "Too many wallets registered");
 
         userWallets[userId].push(wallet);
         walletToUser[wallet] = userId;
@@ -229,6 +279,7 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     function pullFunds(address wallet, uint256 amount) external nonReentrant {
         bytes32 userId = walletToUser[wallet];
         require(userId != bytes32(0), "Wallet not registered");
+        require(msg.sender == wallet, "Only wallet owner can pull funds");
         require(amount > 0, "Amount must be greater than 0");
 
         // Check if we can pull (allowance)
@@ -266,7 +317,13 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
             uint256 allowance = usdc.allowance(wallets[i], address(this));
             uint256 alreadyPulled = pulledAmount[wallets[i]];
             if (allowance > alreadyPulled) {
-                balance += (allowance - alreadyPulled);
+                uint256 availableAllowance = allowance - alreadyPulled;
+                // Check actual wallet balance too
+                uint256 walletBalance = usdc.balanceOf(wallets[i]);
+                uint256 actuallyAvailable = walletBalance < availableAllowance
+                    ? walletBalance
+                    : availableAllowance;
+                balance += actuallyAvailable;
             }
         }
 

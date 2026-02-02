@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../src/MergeTreasury.sol";
 import "../src/interfaces/IStorkOracle.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 // Mock USDC for testing
 contract MockUSDC is ERC20 {
@@ -355,7 +355,7 @@ contract MergeTreasuryTest is Test {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
 
-        vm.prank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
 
         // Check wallet is registered
@@ -374,11 +374,12 @@ contract MergeTreasuryTest is Test {
         address wallet2 = address(0x222);
         address wallet3 = address(0x333);
 
-        vm.startPrank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
+        vm.prank(wallet2);
         treasury.registerWallet(userId, wallet2);
+        vm.prank(wallet3);
         treasury.registerWallet(userId, wallet3);
-        vm.stopPrank();
 
         // Check all wallets are registered
         address[] memory wallets = treasury.getUserWallets(userId);
@@ -391,6 +392,7 @@ contract MergeTreasuryTest is Test {
     function test_RegisterWallet_InvalidAddress() public {
         bytes32 userId = keccak256("user1");
 
+        // address(0) is caught by the invalid wallet check first
         vm.prank(owner);
         vm.expectRevert("Invalid wallet");
         treasury.registerWallet(userId, address(0));
@@ -400,11 +402,11 @@ contract MergeTreasuryTest is Test {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
 
-        vm.prank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
 
         // Try to register same wallet again
-        vm.prank(owner);
+        vm.prank(wallet1);
         vm.expectRevert("Wallet already registered");
         treasury.registerWallet(userId, wallet1);
     }
@@ -415,7 +417,7 @@ contract MergeTreasuryTest is Test {
         uint256 amount = 100 * 10 ** 6;
 
         // Register wallet
-        vm.prank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
 
         // Mint USDC to wallet1
@@ -425,8 +427,8 @@ contract MergeTreasuryTest is Test {
         vm.prank(wallet1);
         usdc.approve(address(treasury), amount);
 
-        // Pull funds
-        vm.prank(owner);
+        // Pull funds (must be called by wallet owner)
+        vm.prank(wallet1);
         treasury.pullFunds(wallet1, amount);
 
         // Check balances
@@ -439,7 +441,7 @@ contract MergeTreasuryTest is Test {
         address wallet1 = address(0x111);
         uint256 amount = 100 * 10 ** 6;
 
-        vm.prank(owner);
+        vm.prank(wallet1);
         vm.expectRevert("Wallet not registered");
         treasury.pullFunds(wallet1, amount);
     }
@@ -450,14 +452,14 @@ contract MergeTreasuryTest is Test {
         uint256 amount = 100 * 10 ** 6;
 
         // Register wallet
-        vm.prank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
 
         // Mint USDC to wallet1
         usdc.mint(wallet1, amount);
 
         // Don't approve - should fail
-        vm.prank(owner);
+        vm.prank(wallet1);
         vm.expectRevert("Insufficient allowance");
         treasury.pullFunds(wallet1, amount);
     }
@@ -470,10 +472,10 @@ contract MergeTreasuryTest is Test {
         uint256 amount2 = 20 * 10 ** 6;
 
         // Register wallets
-        vm.startPrank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
+        vm.prank(wallet2);
         treasury.registerWallet(userId, wallet2);
-        vm.stopPrank();
 
         // Mint USDC to wallets
         usdc.mint(wallet1, amount1);
@@ -493,7 +495,7 @@ contract MergeTreasuryTest is Test {
         assertEq(aggBalance, amount1 + amount2); // 50 USDC
 
         // Pull from wallet1
-        vm.prank(owner);
+        vm.prank(wallet1);
         treasury.pullFunds(wallet1, amount1);
 
         // Check aggregated balance after partial pull
@@ -509,10 +511,10 @@ contract MergeTreasuryTest is Test {
         uint256 amount2 = 20 * 10 ** 6;
 
         // Register wallets
-        vm.startPrank(owner);
+        vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
+        vm.prank(wallet2);
         treasury.registerWallet(userId, wallet2);
-        vm.stopPrank();
 
         // Mint USDC to wallets
         usdc.mint(wallet1, amount1);
@@ -528,10 +530,10 @@ contract MergeTreasuryTest is Test {
         vm.stopPrank();
 
         // Pull all funds
-        vm.startPrank(owner);
+        vm.prank(wallet1);
         treasury.pullFunds(wallet1, amount1);
+        vm.prank(wallet2);
         treasury.pullFunds(wallet2, amount2);
-        vm.stopPrank();
 
         // Check aggregated balance (should equal total in treasury)
         uint256 aggBalance = treasury.getAggregatedBalance(userId);
@@ -557,11 +559,12 @@ contract MergeTreasuryTest is Test {
         uint256 amountC = 50 * 10 ** 6;
 
         // Step 1: Register wallets to user identity
-        vm.startPrank(owner);
+        vm.prank(walletA);
         treasury.registerWallet(userId, walletA);
+        vm.prank(walletB);
         treasury.registerWallet(userId, walletB);
+        vm.prank(walletC);
         treasury.registerWallet(userId, walletC);
-        vm.stopPrank();
 
         // Step 2: Mint USDC to each wallet
         usdc.mint(walletA, amountA);
@@ -586,11 +589,11 @@ contract MergeTreasuryTest is Test {
         assertEq(aggBalance, amountA + amountB + amountC); // 100 USDC
 
         // Step 5: Pull funds from walletA
-        vm.prank(owner);
+        vm.prank(walletA);
         treasury.pullFunds(walletA, amountA);
 
         // Step 6: Pull funds from walletB
-        vm.prank(owner);
+        vm.prank(walletB);
         treasury.pullFunds(walletB, amountB);
 
         // Step 7: Check aggregated balance (partial pull)
@@ -598,7 +601,7 @@ contract MergeTreasuryTest is Test {
         assertEq(aggBalance, amountA + amountB + amountC); // Still 100 USDC
 
         // Step 8: Pull remaining from walletC
-        vm.prank(owner);
+        vm.prank(walletC);
         treasury.pullFunds(walletC, amountC);
 
         // Step 9: Final aggregated balance
@@ -606,11 +609,184 @@ contract MergeTreasuryTest is Test {
         assertEq(aggBalance, amountA + amountB + amountC); // 100 USDC
         assertEq(treasury.userIdBalances(userId), amountA + amountB + amountC);
 
-        // Step 10: User can withdraw from aggregated balance
+        // Step 10: User can withdraw from aggregated balance via withdrawByUserId
         uint256 withdrawAmount = 40 * 10 ** 6;
-        // Need to allow msg.sender (owner) to act as userId
-        // In production, userId would be the withdrawal key
-        // For this test, we verify the treasury balance
-        assertEq(treasury.userIdBalances(userId), 100 * 10 ** 6);
+        uint256 walletABalanceBefore = usdc.balanceOf(walletA);
+
+        // walletA can withdraw on behalf of userId
+        vm.prank(walletA);
+        treasury.withdrawByUserId(userId, withdrawAmount, walletA);
+
+        uint256 walletABalanceAfter = usdc.balanceOf(walletA);
+        assertEq(walletABalanceAfter - walletABalanceBefore, withdrawAmount);
+        assertEq(treasury.userIdBalances(userId), 60 * 10 ** 6); // 100 - 40
+    }
+
+    // ========== Security Tests ==========
+
+    function test_RegisterWallet_SelfRegistrationOnly() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+
+        // Should fail when caller is not the wallet owner
+        vm.prank(owner);
+        vm.expectRevert("Only wallet owner can register");
+        treasury.registerWallet(userId, wallet1);
+
+        // Should succeed when wallet owner calls
+        vm.prank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+
+        assertEq(treasury.walletToUser(wallet1), userId);
+    }
+
+    function test_PullFunds_SelfPullOnly() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 100 * 10**6;
+
+        vm.prank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+
+        usdc.mint(wallet1, amount);
+        vm.prank(wallet1);
+        usdc.approve(address(treasury), amount);
+
+        // Should fail when caller is not the wallet owner
+        vm.prank(owner);
+        vm.expectRevert("Only wallet owner can pull funds");
+        treasury.pullFunds(wallet1, amount);
+
+        // Should succeed when wallet owner calls
+        vm.prank(wallet1);
+        treasury.pullFunds(wallet1, amount);
+
+        assertEq(treasury.userIdBalances(userId), amount);
+    }
+
+    function test_WithdrawByUserId_OnlyRegisteredWallet() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        address wallet2 = address(0x222);
+        address attacker = address(0x999);
+        uint256 amount = 100 * 10**6;
+
+        // Register two wallets to same userId
+        vm.startPrank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+        vm.stopPrank();
+
+        vm.startPrank(wallet2);
+        treasury.registerWallet(userId, wallet2);
+        vm.stopPrank();
+
+        // Deposit funds to userId
+        vm.prank(wallet1);
+        usdc.approve(address(treasury), amount);
+        usdc.mint(wallet1, amount);
+        vm.prank(wallet1);
+        treasury.pullFunds(wallet1, amount);
+
+        // Random attacker should not be able to withdraw
+        vm.prank(attacker);
+        vm.expectRevert("Not authorized: sender not registered to this userId");
+        treasury.withdrawByUserId(userId, amount, attacker);
+
+        // wallet1 should be able to withdraw
+        uint256 balanceBefore = usdc.balanceOf(wallet2);
+        vm.prank(wallet1); // wallet1 initiates, sends to wallet2
+        treasury.withdrawByUserId(userId, amount, wallet2);
+        uint256 balanceAfter = usdc.balanceOf(wallet2);
+
+        assertEq(balanceAfter - balanceBefore, amount);
+    }
+
+    function test_EmergencyWithdraw_SeparateAccounting() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 400 * 10**6;
+
+        // Deposit funds
+        vm.startPrank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+        usdc.mint(wallet1, amount);
+        usdc.approve(address(treasury), amount);
+        treasury.pullFunds(wallet1, amount);
+        vm.stopPrank();
+
+        uint256 totalBefore = treasury.totalTreasuryBalance();
+        assertEq(totalBefore, amount);
+        assertEq(treasury.emergencyWithdrawnTotal(), 0);
+
+        // Emergency withdraw
+        uint256 ownerBalanceBefore = usdc.balanceOf(owner);
+        uint256 emergencyAmount = 100 * 10**6;
+
+        vm.prank(owner);
+        treasury.emergencyWithdraw(emergencyAmount);
+
+        uint256 ownerBalanceAfter = usdc.balanceOf(owner);
+        assertEq(ownerBalanceAfter - ownerBalanceBefore, emergencyAmount);
+        assertEq(treasury.emergencyWithdrawnTotal(), emergencyAmount);
+
+        // totalTreasuryBalance should not change
+        assertEq(treasury.totalTreasuryBalance(), amount);
+
+        // Second emergency withdraw should check available balance
+        vm.prank(owner);
+        treasury.emergencyWithdraw(emergencyAmount);
+
+        assertEq(treasury.emergencyWithdrawnTotal(), emergencyAmount * 2);
+    }
+
+    function test_RegisterWallet_MaxWalletsLimit() public {
+        bytes32 userId = keccak256("user1");
+
+        // Register MAX_WALLETS_PER_USER wallets
+        for (uint256 i = 0; i < 50; i++) {
+            address wallet = address(uint160(i + 1));
+            vm.prank(wallet);
+            treasury.registerWallet(userId, wallet);
+        }
+
+        // Try to register one more - should fail
+        address extraWallet = address(0x999);
+        vm.prank(extraWallet);
+        vm.expectRevert("Too many wallets registered");
+        treasury.registerWallet(userId, extraWallet);
+    }
+
+    function test_GetAggregatedBalance_ChecksWalletBalance() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 allowanceAmount = 1000 * 10**6;
+        uint256 actualBalance = 50 * 10**6;
+
+        vm.prank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+
+        // Approve more than wallet actually has
+        vm.prank(wallet1);
+        usdc.approve(address(treasury), allowanceAmount);
+        // But only mint smaller amount
+        usdc.mint(wallet1, actualBalance);
+
+        // Aggregated balance should use actual wallet balance
+        uint256 aggBalance = treasury.getAggregatedBalance(userId);
+        assertEq(aggBalance, actualBalance); // Should be 50, not 1000
+    }
+
+    function test_WithdrawByUserId_InsufficientBalance() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 100 * 10**6;
+
+        vm.prank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+
+        // Should fail with no balance
+        vm.prank(wallet1);
+        vm.expectRevert("Insufficient balance");
+        treasury.withdrawByUserId(userId, amount, wallet1);
     }
 }
