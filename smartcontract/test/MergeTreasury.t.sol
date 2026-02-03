@@ -6,6 +6,65 @@ import "../src/MergeTreasury.sol";
 import "../src/interfaces/IStorkOracle.sol";
 import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 
+// Mock CCTP MessageTransmitter for testing
+contract MockCCTPMessageTransmitter {
+    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool)) public usedNonces;
+    MergeTreasury public treasury;
+
+    error AlreadyProcessed();
+    error InvalidAttestation();
+
+    constructor() {}
+
+    function setTreasury(address _treasury) external {
+        treasury = MergeTreasury(_treasury);
+    }
+
+    /**
+     * @notice Mock receiveMessage - mints USDC to the calling treasury
+     * @dev This simulates CCTP minting USDC to the treasury address
+     */
+    function receiveMessage(
+        bytes calldata message,
+        bytes calldata attestation
+    ) external returns (bool success) {
+        // Decode message to get nonce and sourceDomain
+        (uint32 version, address sender, uint256 amount, uint32 sourceDomain, uint64 nonce) =
+            _decodeMessage(message);
+
+        require(version == 2, "Invalid CCTP version");
+        require(!usedNonces[sourceDomain][nonce], "Already processed");
+
+        // Mark as processed
+        usedNonces[sourceDomain][nonce] = true;
+
+        // Mint USDC to the treasury (caller)
+        address usdcAddress = address(treasury.usdc());
+        MockUSDC mockUsdc = MockUSDC(usdcAddress);
+        mockUsdc.mint(address(treasury), amount);
+
+        return true;
+    }
+
+    function _decodeMessage(bytes calldata message)
+        internal
+        pure
+        returns (
+            uint32 version,
+            address sender,
+            uint256 amount,
+            uint32 sourceDomain,
+            uint64 nonce
+        )
+    {
+        // Decode using abi.decode (must match abi.encode format)
+        (version, sender, amount, sourceDomain, nonce) = abi.decode(
+            message,
+            (uint32, address, uint256, uint32, uint64)
+        );
+    }
+}
+
 // Mock USDC for testing
 contract MockUSDC is ERC20 {
     constructor() ERC20("Mock USDC", "mUSDC") {
@@ -79,6 +138,7 @@ contract MergeTreasuryTest is Test {
     MergeTreasury public treasury;
     MockUSDC public usdc;
     MockStorkOracle public oracle;
+    MockCCTPMessageTransmitter public cctpTransmitter;
 
     address public owner = address(1);
     address public user = address(2);
@@ -96,8 +156,14 @@ contract MergeTreasuryTest is Test {
         // Deploy mock oracle
         oracle = new MockStorkOracle();
 
+        // Deploy mock CCTP MessageTransmitter
+        cctpTransmitter = new MockCCTPMessageTransmitter();
+
         // Deploy treasury
-        treasury = new MergeTreasury(address(usdc), address(oracle));
+        treasury = new MergeTreasury(address(usdc), address(oracle), address(cctpTransmitter));
+
+        // Set treasury in CCTP mock
+        cctpTransmitter.setTreasury(address(treasury));
 
         vm.stopPrank();
 
@@ -113,17 +179,25 @@ contract MergeTreasuryTest is Test {
     }
 
     function test_ReceivePayment() public {
+        // Test CCTP message reception
         uint256 amount = 100 * 10 ** 6; // 100 USDC
-        uint256 sourceChainId = 84532; // Base Sepolia
+        uint32 sourceDomain = 0; // Ethereum Sepolia CCTP domain
+        uint64 nonce = 1;
 
-        // Payer approves treasury
-        vm.startPrank(payer);
-        usdc.approve(address(treasury), amount);
+        // Create a mock CCTP message
+        bytes memory message = _createMockCctpMessage(
+            address(0), // burnToken (unused in new encoding)
+            address(0), // mintRecipient (unused in new encoding)
+            payer,
+            amount,
+            sourceDomain,
+            nonce
+        );
 
-        // Simulate LI.FI contract calling receivePayment
-        // In real scenario, LI.FI router would call this
-        treasury.receivePayment(payer, amount, sourceChainId);
-        vm.stopPrank();
+        bytes memory attestation = hex"01"; // Mock attestation
+
+        // Anyone can call receiveCctpMessage to deliver a transfer
+        treasury.receiveCctpMessage(message, attestation);
 
         // Check balances
         assertEq(treasury.userBalances(payer), amount);
@@ -134,7 +208,66 @@ contract MergeTreasuryTest is Test {
         MergeTreasury.Payment memory payment = treasury.getPayment(0);
         assertEq(payment.payer, payer);
         assertEq(payment.amount, amount);
-        assertEq(payment.sourceChainId, sourceChainId);
+        assertEq(payment.sourceChainId, sourceDomain);
+    }
+
+    function test_ReceiveCctpMessage_ReplayProtection() public {
+        uint256 amount = 100 * 10 ** 6;
+        uint32 sourceDomain = 0;
+        uint64 nonce = 1;
+
+        bytes memory message = _createMockCctpMessage(
+            address(0), address(0), payer, amount, sourceDomain, nonce
+        );
+        bytes memory attestation = hex"01";
+
+        // First call should succeed
+        treasury.receiveCctpMessage(message, attestation);
+
+        // Second call with same nonce should fail
+        vm.expectRevert("Already processed");
+        treasury.receiveCctpMessage(message, attestation);
+    }
+
+    function test_IsCctpNonceProcessed() public {
+        uint256 amount = 100 * 10 ** 6;
+        uint32 sourceDomain = 0;
+        uint64 nonce = 1;
+
+        bytes memory message = _createMockCctpMessage(
+            address(0), address(0), payer, amount, sourceDomain, nonce
+        );
+        bytes memory attestation = hex"01";
+
+        // Initially not processed
+        assertFalse(treasury.isCctpNonceProcessed(sourceDomain, nonce));
+
+        // After processing, should be true
+        treasury.receiveCctpMessage(message, attestation);
+        assertTrue(treasury.isCctpNonceProcessed(sourceDomain, nonce));
+    }
+
+    /**
+     * @notice Helper to create a mock CCTP V2 message
+     * @dev Uses abi.encode for easy decoding
+     */
+    function _createMockCctpMessage(
+        address burnToken,
+        address mintRecipient,
+        address sender,
+        uint256 amount,
+        uint32 sourceDomain,
+        uint64 nonce
+    ) internal pure returns (bytes memory) {
+        // Use abi.encode for easy ABI decoding
+        // Note: burnToken and mintRecipient are not needed for decoding but kept for consistency
+        return abi.encode(
+            uint32(2),     // version (CCTP V2)
+            sender,        // sender address
+            amount,        // amount
+            sourceDomain,  // source domain
+            nonce          // nonce
+        );
     }
 
     function test_Deposit() public {

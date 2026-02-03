@@ -7,9 +7,32 @@ import "openzeppelin-contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IStorkOracle.sol";
 
 /**
+ * @title IMessageTransmitter
+ * @notice Interface for Circle CCTP MessageTransmitterV2
+ * @dev Used to receive cross-chain USDC transfers via CCTP
+ */
+interface IMessageTransmitter {
+    /**
+     * @notice Receive a message from another domain
+     * @param message The CCTP message bytes (from burn event)
+     * @param attestation The Circle API attestation signature
+     * @return success True if message was successfully processed
+     */
+    function receiveMessage(bytes calldata message, bytes calldata attestation) external returns (bool success);
+
+    /**
+     * @notice Check if a nonce has been used
+     * @param sourceDomain Source CCTP domain
+     * @param nonce Message nonce
+     * @return used True if nonce has been used
+     */
+    function usedNonces(uint256 sourceDomain, uint64 nonce) external view returns (bool);
+}
+
+/**
  * @title MergeTreasury
- * @notice Receives cross-chain payments from multiple sources and manages treasury
- * @dev Deployed on Arc blockchain as settlement hub
+ * @notice Receives cross-chain USDC via Circle CCTP and manages treasury
+ * @dev Deployed on Arc blockchain as settlement hub for Circle Wallets integration
  */
 contract MergeTreasury is Ownable, ReentrancyGuard {
     // USDC token on Arc
@@ -17,6 +40,12 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
     // Stork Oracle for price data
     IStorkOracle public immutable storkOracle;
+
+    // CCTP MessageTransmitter on Arc
+    IMessageTransmitter public immutable cctpMessageTransmitter;
+
+    // Track processed CCTP messages to prevent replay attacks
+    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool)) public processedCctpNonces;
 
     // Track user balances (address-based for existing functionality)
     mapping(address => uint256) public userBalances;
@@ -71,6 +100,14 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         uint256 timestamp
     );
 
+    event CctpMessageReceived(
+        address indexed sender,
+        uint256 amount,
+        uint32 sourceDomain,
+        uint64 nonce,
+        uint256 timestamp
+    );
+
     event Withdrawal(
         address indexed user,
         uint256 amount,
@@ -96,48 +133,64 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     event WithdrawalByUserId(bytes32 indexed userId, uint256 amount, address indexed to, uint256 timestamp);
     event EmergencyWithdrawal(address indexed owner, uint256 amount, string note);
 
-    constructor(address _usdc, address _storkOracle) Ownable(msg.sender) {
+    constructor(
+        address _usdc,
+        address _storkOracle,
+        address _cctpMessageTransmitter
+    ) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC address");
         require(_storkOracle != address(0), "Invalid oracle address");
+        require(_cctpMessageTransmitter != address(0), "Invalid CCTP MessageTransmitter");
         usdc = IERC20(_usdc);
         storkOracle = IStorkOracle(_storkOracle);
+        cctpMessageTransmitter = IMessageTransmitter(_cctpMessageTransmitter);
     }
 
     /**
-     * @notice Receive payment from LI.FI routing (from any source chain)
-     * @param payer Original payer address
-     * @param amount Amount of USDC received
-     * @param sourceChainId Chain ID where payment originated
+     * @notice Process CCTP message and credit user balance
+     * @dev Anyone can call this to deliver a CCTP transfer to a user
+     * @dev Follows CEI pattern: state update before external call
+     * @param message The CCTP message bytes (from burn event)
+     * @param attestation The Circle API attestation signature
      */
-    function receivePayment(
-        address payer,
-        uint256 amount,
-        uint256 sourceChainId
+    function receiveCctpMessage(
+        bytes calldata message,
+        bytes calldata attestation
     ) external nonReentrant {
-        require(payer != address(0), "Invalid payer");
-        require(amount > 0, "Amount must be greater than 0");
-        require(
-            usdc.transferFrom(msg.sender, address(this), amount),
-            "Transfer failed"
-        );
+        // Parse CCTP message format to get nonce and sourceDomain
+        (uint32 version, address sender, uint256 amount, uint32 sourceDomain, uint64 nonce) =
+            _decodeCctpMessage(message);
 
-        // Update balances
-        userBalances[payer] += amount;
+        require(version == 2, "Invalid CCTP version");
+        require(!processedCctpNonces[sourceDomain][nonce], "Already processed");
+
+        // Mark as processed BEFORE external call (CEI pattern)
+        processedCctpNonces[sourceDomain][nonce] = true;
+
+        // Call CCTP MessageTransmitter to mint USDC to this contract
+        // This will mint the USDC directly to address(this)
+        bool success = cctpMessageTransmitter.receiveMessage(message, attestation);
+        require(success, "CCTP receiveMessage failed");
+
+        // Now the USDC has been minted to this contract
+        // Credit the original sender's balance
+        userBalances[sender] += amount;
         totalTreasuryBalance += amount;
 
         // Record payment
         Payment memory payment = Payment({
-            payer: payer,
+            payer: sender,
             amount: amount,
-            sourceChainId: sourceChainId,
+            sourceChainId: sourceDomain,
             timestamp: block.timestamp
         });
 
         uint256 paymentId = paymentHistory.length;
         paymentHistory.push(payment);
-        userPaymentIds[payer].push(paymentId);
+        userPaymentIds[sender].push(paymentId);
 
-        emit PaymentReceived(payer, amount, sourceChainId, block.timestamp);
+        emit PaymentReceived(sender, amount, sourceDomain, block.timestamp);
+        emit CctpMessageReceived(sender, amount, sourceDomain, nonce, block.timestamp);
     }
 
     /**
@@ -197,7 +250,8 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Direct deposit to treasury (alternative to receivePayment)
+     * @notice Direct deposit to treasury
+     * @dev Users can deposit USDC directly from wallets already on Arc
      * @param amount Amount to deposit
      */
     function deposit(uint256 amount) external nonReentrant {
@@ -211,6 +265,48 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         totalTreasuryBalance += amount;
 
         emit TreasuryDeposit(msg.sender, amount);
+    }
+
+    // ========== CCTP Helper Functions ==========
+
+    /**
+     * @notice Check if a CCTP message has been processed
+     * @param sourceDomain Source CCTP domain
+     * @param nonce Message nonce
+     * @return processed True if already processed
+     */
+    function isCctpNonceProcessed(uint32 sourceDomain, uint64 nonce) external view returns (bool) {
+        return processedCctpNonces[sourceDomain][nonce];
+    }
+
+    // ========== Internal Functions ==========
+
+    /**
+     * @notice Decode CCTP V2 message to extract key fields
+     * @dev Uses a wrapper format for easier ABI decoding
+     * @param message The CCTP message bytes
+     * @return version CCTP version (should be 2)
+     * @return sender Original sender address
+     * @return amount Amount of USDC transferred
+     * @return sourceDomain Source CCTP domain
+     * @return nonce Message nonce for replay protection
+     */
+    function _decodeCctpMessage(bytes calldata message)
+        internal
+        pure
+        returns (
+            uint32 version,
+            address sender,
+            uint256 amount,
+            uint32 sourceDomain,
+            uint64 nonce
+        )
+    {
+        // Decode using the same structure as encoding
+        (version, sender, amount, sourceDomain, nonce) = abi.decode(
+            message,
+            (uint32, address, uint256, uint32, uint64)
+        );
     }
 
     /**
@@ -475,7 +571,7 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         return _getCachedPrice(assetId);
     }
 
-    // ========== Internal Functions ==========
+    // ========== Oracle Internal Functions ==========
 
     /**
      * @notice Internal: Cache a price
