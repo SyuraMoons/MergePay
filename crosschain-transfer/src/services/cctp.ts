@@ -129,6 +129,11 @@ const MESSAGE_TRANSMITTER_ABI = [
       { name: 'sourceDomain', type: 'uint32', indexed: true },
     ],
   },
+  {
+    name: 'MessageSent',
+    type: 'event',
+    inputs: [{ name: 'message', type: 'bytes' }],
+  },
 ] as const;
 
 /**
@@ -263,7 +268,11 @@ export class CCTPService {
   /**
    * Extract message from DepositForBurn event logs
    */
+  /**
+   * Extract message from DepositForBurn or MessageSent event logs
+   */
   private extractMessageFromLogs(logs: readonly Log[]): string {
+    // Try to find DepositForBurn first (TokenMessenger)
     for (const log of logs) {
       try {
         const decoded = decodeEventLog({
@@ -276,10 +285,28 @@ export class CCTPService {
           return decoded.args.message as string;
         }
       } catch {
-        // Skip logs that don't match the event
         continue;
       }
     }
+
+    // Fallback: Try to find MessageSent (MessageTransmitter)
+    // This is more robust as it is a simpler event
+    for (const log of logs) {
+      try {
+        const decoded = decodeEventLog({
+          abi: MESSAGE_TRANSMITTER_ABI,
+          data: log.data,
+          topics: log.topics as any,
+        });
+
+        if (decoded.eventName === 'MessageSent' && 'message' in decoded.args) {
+          return decoded.args.message as string;
+        }
+      } catch {
+        continue;
+      }
+    }
+
     throw new TransferFailedError('Could not extract message from burn transaction logs');
   }
 
