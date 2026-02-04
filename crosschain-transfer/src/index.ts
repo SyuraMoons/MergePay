@@ -164,9 +164,23 @@ Explorers:
  * Main entry point
  */
 async function main(): Promise<void> {
+  // Parse CLI arguments first to determine mode
+  const { command, args } = parseArgs();
+
+  // Determine if we're in Gateway mode or CCTP mode
+  const isGatewayMode = [
+    Command.GatewayDeposit,
+    Command.GatewayBalance,
+    Command.GatewayTransfer
+  ].includes(command);
+
+  const headerTitle = isGatewayMode
+    ? 'Gateway Cross-Chain USDC (Instant Transfers)'
+    : 'CCTP Cross-Chain USDC Transfer: Sepolia → Arc';
+
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
-║     CCTP Cross-Chain USDC Transfer: Sepolia → Arc              ║
+║     ${headerTitle.padEnd(59)}║
 ╚═══════════════════════════════════════════════════════════════╝
 `);
 
@@ -182,9 +196,6 @@ async function main(): Promise<void> {
 
   const privateKey = process.env.PRIVATE_KEY!;
   const recipientAddress = process.env.RECIPIENT_ADDRESS;
-
-  // Parse CLI arguments
-  const { command, args } = parseArgs();
 
   // Create orchestrator
   const orchestrator = new TransferOrchestrator();
