@@ -12,7 +12,7 @@ import { defineChain } from 'viem';
  * Custom Arc Testnet chain definition for viem
  */
 export const arcTestnet = defineChain({
-  id: 432113,
+  id: 5042002,
   name: 'Arc Testnet',
   nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
@@ -48,7 +48,7 @@ export const SEPOLIA = {
  * Arc Testnet Configuration
  */
 export const ARC = {
-  chainId: 432113,
+  chainId: 5042002,
   domain: 26,
   rpc: 'https://rpc.testnet.arc.network',
   explorer: 'https://testnet.arcscan.app',
@@ -74,6 +74,10 @@ export const CCTP_CONFIG = {
   // Max fee for Fast Transfer (in USDC smallest unit, 6 decimals)
   // 0.0005 USDC = 500 base units
   defaultMaxFee: 500n,
+  // Finality threshold for Standard Transfer
+  // 1000 = Fast Transfer (not supported on all chains)
+  // 2000 = Standard Transfer (supported on all chains, including Arc)
+  standardFinalityThreshold: 2000,
   // Default destination caller (zero address = anyone can call)
   defaultDestinationCaller: '0x0000000000000000000000000000000000000000' as const,
   // Attestation polling timeout (milliseconds)

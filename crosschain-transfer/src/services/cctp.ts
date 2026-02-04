@@ -65,6 +65,15 @@ const ERC20_ABI = [
 
 /**
  * TokenMessengerV2 ABI for CCTP burn
+ *
+ * CCTP V2 requires 7 parameters for depositForBurn:
+ * - amount: uint256
+ * - destinationDomain: uint32
+ * - mintRecipient: bytes32
+ * - burnToken: address
+ * - destinationCaller: bytes32
+ * - maxFee: uint256 (V2 addition - max fee for Fast Transfer)
+ * - minFinalityThreshold: uint32 (V2 addition - finality level: 1000=Fast, 2000=Standard)
  */
 const TOKEN_MESSENGER_ABI = [
   {
@@ -77,6 +86,8 @@ const TOKEN_MESSENGER_ABI = [
       { name: 'mintRecipient', type: 'bytes32' },
       { name: 'burnToken', type: 'address' },
       { name: 'destinationCaller', type: 'bytes32' },
+      { name: 'maxFee', type: 'uint256' },
+      { name: 'minFinalityThreshold', type: 'uint32' },
     ],
     outputs: [{ name: '', type: 'uint64' }],
   },
@@ -146,9 +157,13 @@ export class CCTPService {
 
   /**
    * Convert address to bytes32 format
+   * Pads address with leading zeros to make it 32 bytes (64 hex chars)
    */
   private addressToBytes32(address: Address): `0x${string}` {
-    return encodePacked('address', address) as `0x${string}`;
+    // Remove 0x prefix and pad with leading zeros to 64 hex characters (32 bytes)
+    const addressWithoutPrefix = address.toLowerCase().slice(2);
+    const paddedAddress = addressWithoutPrefix.padStart(64, '0');
+    return `0x${paddedAddress}` as `0x${string}`;
   }
 
   /**
@@ -174,6 +189,7 @@ export class CCTPService {
 
     try {
       // Step 1: Check existing allowance
+      this.emit(TransferStatus.Burning, 'Checking USDC allowance...');
       const allowance = (await publicClient.readContract({
         address: SEPOLIA.usdc,
         abi: ERC20_ABI,
@@ -213,6 +229,8 @@ export class CCTPService {
           this.addressToBytes32(params.mintRecipient as Address),
           SEPOLIA.usdc, // burnToken
           this.addressToBytes32(params.destinationCaller as Address),
+          CCTP_CONFIG.defaultMaxFee, // maxFee (V2 parameter)
+          CCTP_CONFIG.standardFinalityThreshold, // minFinalityThreshold (V2 parameter - 2000 for Standard)
         ],
       });
 
@@ -232,6 +250,10 @@ export class CCTPService {
         nonce: message ? this.extractNonceFromLogs(receipt.logs) : undefined,
       };
     } catch (error) {
+      this.emit(
+        TransferStatus.Failed,
+        `Burn failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
       throw new TransferFailedError(
         `Failed to burn USDC: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -289,49 +311,59 @@ export class CCTPService {
   async getAttestation(burnTxHash: string): Promise<{ attestation: string; message: string }> {
     this.emit(TransferStatus.AwaitingAttestation, 'Polling Circle API for attestation...');
 
-    // First, get the message from the transaction
-    const publicClient = createPublicClient({
-      chain: sepolia,
-      transport: http(SEPOLIA.rpc),
-    });
+    try {
+      // First, get the message from the transaction
+      const publicClient = createPublicClient({
+        chain: sepolia,
+        transport: http(SEPOLIA.rpc),
+      });
 
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: burnTxHash as Hash });
-    const message = this.extractMessageFromLogs(receipt.logs);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: burnTxHash as Hash });
+      const message = this.extractMessageFromLogs(receipt.logs);
 
-    // Poll for attestation
-    const attestation = await pollWithBackoff(
-      async () => {
-        const response = await fetch(`${CIRCLE_API.baseUrl}${CIRCLE_API.attestations}/${burnTxHash}`);
+      // Poll for attestation
+      const attestation = await pollWithBackoff(
+        async () => {
+          const response = await fetch(`${CIRCLE_API.baseUrl}${CIRCLE_API.attestations}/${burnTxHash}`);
 
-        // 404 means not ready yet, continue polling
-        if (response.status === 404) {
+          // 404 means not ready yet, continue polling
+          if (response.status === 404) {
+            return null;
+          }
+
+          if (!response.ok) {
+            throw new TransferFailedError(`Circle API error: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          // Check if attestation is complete
+          if (data.status === 'complete') {
+            return data.attestation as string;
+          }
+
+          // Still pending
           return null;
+        },
+        {
+          initialDelay: CCTP_CONFIG.attestationPollInterval,
+          timeout: CCTP_CONFIG.attestationTimeout,
+          maxAttempts: 60,
         }
+      );
 
-        if (!response.ok) {
-          throw new TransferFailedError(`Circle API error: ${response.statusText}`);
-        }
+      this.emit(TransferStatus.AttestationReceived, 'Attestation received from Circle');
 
-        const data = await response.json();
-
-        // Check if attestation is complete
-        if (data.status === 'complete') {
-          return data.attestation as string;
-        }
-
-        // Still pending
-        return null;
-      },
-      {
-        initialDelay: CCTP_CONFIG.attestationPollInterval,
-        timeout: CCTP_CONFIG.attestationTimeout,
-        maxAttempts: 60,
-      }
-    );
-
-    this.emit(TransferStatus.AttestationReceived, 'Attestation received from Circle');
-
-    return { attestation, message };
+      return { attestation, message };
+    } catch (error) {
+      this.emit(
+        TransferStatus.Failed,
+        `Attestation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      throw new TransferFailedError(
+        `Failed to get attestation: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
@@ -368,6 +400,10 @@ export class CCTPService {
 
       return { mintHash };
     } catch (error) {
+      this.emit(
+        TransferStatus.Failed,
+        `Mint failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
       throw new TransferFailedError(
         `Failed to mint USDC: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -382,33 +418,41 @@ export class CCTPService {
     mintRecipient: Address,
     privateKey: string
   ): Promise<TransferResult> {
-    // Step 1: Burn USDC on Sepolia
-    const burnResult = await this.burnUSDConSepolia({
-      amount,
-      mintRecipient,
-      destinationCaller: CCTP_CONFIG.defaultDestinationCaller,
-      privateKey,
-    });
+    try {
+      // Step 1: Burn USDC on Sepolia
+      const burnResult = await this.burnUSDConSepolia({
+        amount,
+        mintRecipient,
+        destinationCaller: CCTP_CONFIG.defaultDestinationCaller,
+        privateKey,
+      });
 
-    // Step 2: Get attestation
-    const { attestation, message } = await this.getAttestation(burnResult.burnHash);
+      // Step 2: Get attestation
+      const { attestation, message } = await this.getAttestation(burnResult.burnHash);
 
-    // Step 3: Mint USDC on Arc
-    const mintResult = await this.mintUSDConArc({
-      attestation,
-      message,
-      privateKey,
-    });
+      // Step 3: Mint USDC on Arc
+      const mintResult = await this.mintUSDConArc({
+        attestation,
+        message,
+        privateKey,
+      });
 
-    this.emit(TransferStatus.Completed, 'Transfer complete!');
+      this.emit(TransferStatus.Completed, 'Transfer complete!');
 
-    return {
-      burnHash: burnResult.burnHash,
-      attestation,
-      mintHash: mintResult.mintHash,
-      sourceChain: 'sepolia',
-      destinationChain: 'arc',
-      amount,
-    };
+      return {
+        burnHash: burnResult.burnHash,
+        attestation,
+        mintHash: mintResult.mintHash,
+        sourceChain: 'sepolia',
+        destinationChain: 'arc',
+        amount,
+      };
+    } catch (error) {
+      this.emit(
+        TransferStatus.Failed,
+        `Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      throw error;
+    }
   }
 }
