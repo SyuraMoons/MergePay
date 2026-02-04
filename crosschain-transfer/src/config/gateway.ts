@@ -45,9 +45,9 @@ export const GATEWAY_MINTER = {
  * Gateway API Configuration (Testnet)
  */
 export const GATEWAY_API = {
-  baseUrl: 'https://gateway-api-sandbox.circle.com',
-  balances: '/balances',
-  transfer: '/transfer',
+  baseUrl: 'https://gateway-api-testnet.circle.com',
+  balances: '/v1/balances',
+  transfer: '/v1/transfer',
 } as const;
 
 /**

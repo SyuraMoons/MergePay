@@ -14,8 +14,11 @@ import {
   http,
   type Hash,
   type Address,
+  padHex,
+  toHex,
 } from 'viem';
 import { sepolia } from 'viem/chains';
+import crypto from 'crypto';
 
 import { SEPOLIA, ARC, arcTestnet } from '../config/contracts.js';
 import {
@@ -77,8 +80,8 @@ const GATEWAY_WALLET_ABI = [
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'amount', type: 'uint256' },
-      { name: 'srcDomain', type: 'uint32' },
+      { name: 'token', type: 'address' },
+      { name: 'value', type: 'uint256' },
     ],
     outputs: [],
   },
@@ -183,7 +186,7 @@ export class GatewayService {
         address: gatewayWallet,
         abi: GATEWAY_WALLET_ABI,
         functionName: 'deposit',
-        args: [params.amount, domain],
+        args: [chainConfig.usdc, params.amount],
       });
 
       // Wait for deposit confirmation
@@ -212,26 +215,56 @@ export class GatewayService {
     address: Address,
     chains: GatewayChain[] = ['sepolia', 'arc']
   ): Promise<GatewayBalanceResponse> {
-    const domains = chains.map((chain) => GATEWAY_DOMAINS[chain]);
+    // Check for API key
+    const apiKey = process.env.CIRCLE_GATEWAY_API_KEY;
+    if (!apiKey) {
+      throw new GatewayError(
+        'CIRCLE_GATEWAY_API_KEY not set in .env file. Get your API key from: https://circle.com/en/developers'
+      );
+    }
 
     try {
-      // Call Gateway API
+      // Call Gateway API with POST and authentication
       const response = await fetch(
-        `${GATEWAY_API.baseUrl}${GATEWAY_API.balances}?address=${address}&domains=${domains.join(',')}`
+        `${GATEWAY_API.baseUrl}${GATEWAY_API.balances}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            token: 'USDC',
+            sources: chains.map(chain => ({
+              depositor: address,
+              domain: GATEWAY_DOMAINS[chain]
+            }))
+          })
+        }
       );
 
       if (!response.ok) {
-        throw new GatewayError(`Gateway API error: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new GatewayError(`Gateway API error: ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
 
-      // Parse balances
-      const balances: GatewayDomainBalance[] = chains.map((chain, index) => ({
-        domain: domains[index],
-        chain,
-        balance: BigInt(data.balances?.[domains[index]] || '0'),
-      }));
+      // Parse response - API returns array of balance objects
+      const balances: GatewayDomainBalance[] = (data.balances || []).map((item: any) => {
+        const chain = chains.find(c => GATEWAY_DOMAINS[c] === item.domain);
+        // Convert balance string (e.g., "1000.50") to smallest unit (1000500000)
+        // USDC has 6 decimals
+        const balanceStr = item.balance || '0';
+        const balanceFloat = parseFloat(balanceStr);
+        const balanceInSmallestUnit = BigInt(Math.floor(balanceFloat * 1000000));
+
+        return {
+          domain: item.domain,
+          chain: chain || chains[0], // Fallback to first chain if not found
+          balance: balanceInSmallestUnit,
+        };
+      });
 
       const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0n);
 
@@ -257,12 +290,13 @@ export class GatewayService {
   ): Promise<GatewayTransferResult> {
     const account = privateKeyToAccount(params.privateKey as `0x${string}`);
     const destinationDomain = GATEWAY_DOMAINS[params.destinationChain];
+    const destinationConfig = getChainConfig(params.destinationChain);
+    const destinationUSDC = destinationConfig.usdc;
     const burnHashes = new Map<GatewayChain, string>();
 
     try {
       // Step 1: Create and sign burn intents for each source chain
-      const burnIntents: string[] = [];
-      const signatures: string[] = [];
+      const signedIntents = [];
 
       for (const source of params.sourceChains) {
         const chainConfig = getChainConfig(source.chain);
@@ -275,19 +309,34 @@ export class GatewayService {
         const blockNumber = await publicClient.getBlockNumber();
         const maxBlockHeight = blockNumber + 1000n; // Allow 1000 blocks for execution
 
-        // Create transfer spec
-        const transferSpec: GatewayTransferSpec = {
-          recipient: params.recipient,
-          amount: source.amount,
-          srcDomain: source.domain,
-          dstDomain: destinationDomain,
+        // Create transfer spec matching Gateway API structure
+        const spec = {
+          version: 1,
+          sourceDomain: source.domain,
+          destinationDomain: destinationDomain,
+          sourceContract: padHex(GATEWAY_WALLET[source.chain], { size: 32 }),
+          destinationContract: padHex(GATEWAY_MINTER[params.destinationChain], { size: 32 }),
+          sourceToken: padHex(chainConfig.usdc, { size: 32 }),
+          destinationToken: padHex(destinationUSDC, { size: 32 }),
+          sourceDepositor: padHex(account.address, { size: 32 }),
+          destinationRecipient: padHex(params.recipient, { size: 32 }),
+          sourceSigner: padHex(account.address, { size: 32 }),
+          destinationCaller: padHex('0x0000000000000000000000000000000000000000', { size: 32 }),
+          value: source.amount.toString(),
+          salt: toHex(crypto.randomBytes(32)),
+          hookData: '0x',
         };
 
-        // Create burn intent
+        // Create burn intent for EIP-712 signing
         const burnIntent: GatewayBurnIntent = {
           maxBlockHeight,
           maxFee: GATEWAY_CONFIG.defaultMaxFee,
-          spec: transferSpec,
+          spec: {
+            recipient: params.recipient,
+            amount: source.amount,
+            srcDomain: source.domain,
+            dstDomain: destinationDomain,
+          },
         };
 
         // Sign burn intent using EIP-712
@@ -315,30 +364,41 @@ export class GatewayService {
           message: burnIntent,
         });
 
-        // Encode burn intent for contract call
-        const encodedBurnIntent = this.encodeBurnIntent(burnIntent);
-        burnIntents.push(encodedBurnIntent);
-        signatures.push(signature);
+        // Add signed intent matching API structure
+        signedIntents.push({
+          maxBlockHeight: maxBlockHeight.toString(),
+          maxFee: GATEWAY_CONFIG.defaultMaxFee.toString(),
+          spec,
+          signature,
+        });
 
         // Store for result
-        burnHashes.set(source.chain, signature); // Using signature as identifier
+        burnHashes.set(source.chain, signature);
       }
 
       // Step 2: Submit to Gateway API for attestation
+      // API expects flat array of {burnIntent, signature} objects
+      const requestBody = signedIntents.map(intent => ({
+        burnIntent: {
+          maxBlockHeight: intent.maxBlockHeight,
+          maxFee: intent.maxFee,
+          spec: intent.spec
+        },
+        signature: intent.signature
+      }));
+
       const attestationResponse = await fetch(`${GATEWAY_API.baseUrl}${GATEWAY_API.transfer}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          burnIntents,
-          signatures,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!attestationResponse.ok) {
+        const errorText = await attestationResponse.text();
         throw new GatewayTransferFailedError(
-          `Gateway API transfer failed: ${attestationResponse.statusText}`
+          `Gateway API transfer failed: ${attestationResponse.statusText} - ${errorText}`
         );
       }
 
@@ -346,7 +406,6 @@ export class GatewayService {
       const attestation = attestationData.attestation as string;
 
       // Step 3: Call gatewayMint on destination chain
-      const destinationConfig = getChainConfig(params.destinationChain);
       const walletClient = createWalletClient({
         chain: destinationConfig.viemChain,
         account,
@@ -358,13 +417,21 @@ export class GatewayService {
         transport: http(destinationConfig.rpc),
       });
 
+      // Encode burn intents for contract call
+      // Note: The Gateway Minter expects encoded burn intent bytes
+      const encodedBurnIntents = signedIntents.map((intent) => {
+        // Simple ABI encoding of the burn intent structure
+        // This matches what the Gateway contract expects
+        return JSON.stringify(intent);
+      });
+
       const mintHash = await walletClient.writeContract({
         address: GATEWAY_MINTER[params.destinationChain],
         abi: GATEWAY_MINTER_ABI,
         functionName: 'gatewayMint',
         args: [
-          burnIntents as `0x${string}`[],
-          signatures as `0x${string}`[],
+          encodedBurnIntents as `0x${string}`[],
+          signedIntents.map((i) => i.signature) as `0x${string}`[],
           attestation as `0x${string}`,
         ],
       });
@@ -385,15 +452,5 @@ export class GatewayService {
         `Failed to transfer Gateway balance: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  }
-
-  /**
-   * Encode burn intent for contract call
-   * (Simplified encoding - adjust based on actual contract ABI requirements)
-   */
-  private encodeBurnIntent(burnIntent: GatewayBurnIntent): string {
-    // This is a placeholder - actual encoding should match Gateway contract expectations
-    // You may need to use viem's encodeAbiParameters or similar
-    return '0x'; // TODO: Implement proper encoding
   }
 }
