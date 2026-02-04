@@ -5,7 +5,7 @@
  * a simple interface for cross-chain USDC transfers.
  */
 
-import { CCTPService } from './cctp.js';
+import { BridgeKitService } from './bridge-kit.js';
 import { GatewayService } from './gateway.js';
 import { BalanceAggregator } from './balance-aggregator.js';
 import { WalletService, createWalletService, type WalletBalance } from './wallet.js';
@@ -72,14 +72,14 @@ export interface OrchestratorResult {
  * Transfer Orchestrator Service
  */
 export class TransferOrchestrator {
-  private cctpService: CCTPService;
+  private bridgeKitService: BridgeKitService;
   private gatewayService: GatewayService;
   private balanceAggregator: BalanceAggregator;
   private walletService: WalletService;
   private progress: TransferEvent[] = [];
 
   constructor() {
-    this.cctpService = new CCTPService(this.trackProgress.bind(this));
+    this.bridgeKitService = new BridgeKitService(this.trackProgress.bind(this));
     this.gatewayService = new GatewayService();
     this.balanceAggregator = new BalanceAggregator();
     this.walletService = createWalletService();
@@ -215,10 +215,11 @@ export class TransferOrchestrator {
         // For CLI automation, we'll proceed
       }
 
-      // Execute transfer
+      // Execute transfer using Bridge Kit SDK
       console.log('--- Starting Transfer ---\n');
+      console.log('ℹ️  Using Circle Bridge Kit SDK (automatic V2 API, built-in retry)\n');
 
-      const result = await this.cctpService.transferSepoliaToArc(
+      const result = await this.bridgeKitService.transferSepoliaToArc(
         BigInt(params.amount * 1_000_000), // Convert to smallest units
         params.recipient as `0x${string}`,
         params.privateKey
@@ -316,7 +317,8 @@ export class TransferOrchestrator {
 
   /**
    * Resume a transfer from burn transaction hash
-   * Useful if attestation polling was interrupted
+   * Note: With Bridge Kit, manual resume is generally not needed as the SDK
+   * handles retries automatically. This method is kept for backward compatibility.
    */
   async resumeFromBurn(burnTxHash: string, privateKey: string): Promise<OrchestratorResult> {
     this.progress = [];
@@ -324,36 +326,17 @@ export class TransferOrchestrator {
     try {
       console.log('\n=== Resuming Transfer ===\n');
       console.log(`Burn TX: ${burnTxHash}\n`);
+      console.log('⚠️  Note: Bridge Kit handles retries automatically. Manual resume may not be needed.\n');
 
-      // Get attestation
-      console.log('Fetching attestation...');
-      const { attestation, message } = await this.cctpService.getAttestation(burnTxHash);
-
-      // Mint on Arc
-      console.log('Minting on Arc...');
-      const mintResult = await this.cctpService.mintUSDConArc({
-        attestation,
-        message,
-        privateKey,
-      });
-
-      console.log('\n=== Transfer Complete! ===\n');
-      console.log(`Mint TX: ${ARC.explorer}/tx/${mintResult.mintHash}\n`);
+      // Bridge Kit doesn't support manual resume from burn hash
+      // This would require using the lower-level CCTP provider directly
+      console.error('❌ Manual resume from burn hash is not supported with Bridge Kit.');
+      console.error('   Bridge Kit automatically handles attestation polling and retries.');
+      console.error('   If the transfer failed, use the retry mechanism instead.\n');
 
       return {
-        success: true,
-        result: {
-          burnHash: burnTxHash,
-          attestation,
-          mintHash: mintResult.mintHash,
-          sourceChain: 'sepolia',
-          destinationChain: 'arc',
-          amount: 0n, // Unknown from resume
-        },
-        explorerUrls: {
-          burnTx: `${SEPOLIA.explorer}/tx/${burnTxHash}`,
-          mintTx: `${ARC.explorer}/tx/${mintResult.mintHash}`,
-        },
+        success: false,
+        error: 'Manual resume not supported with Bridge Kit. Use automatic retry instead.',
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

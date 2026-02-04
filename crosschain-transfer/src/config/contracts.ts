@@ -81,7 +81,7 @@ export const CCTP_CONFIG = {
   // Default destination caller (zero address = anyone can call)
   defaultDestinationCaller: '0x0000000000000000000000000000000000000000' as const,
   // Attestation polling timeout (milliseconds)
-  attestationTimeout: 300000, // 5 minutes
+  attestationTimeout: 1500000, // 25 minutes (Sepolia needs ~15-20 mins for finality)
   // Attestation polling interval (milliseconds)
   attestationPollInterval: 2000,
 } as const;
