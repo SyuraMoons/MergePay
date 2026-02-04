@@ -121,3 +121,8 @@ export interface TransferEvent {
  * Transfer progress callback type
  */
 export type TransferProgressCallback = (event: TransferEvent) => void;
+
+/**
+ * Re-export Gateway types
+ */
+export * from './gateway.js';

@@ -33,7 +33,7 @@ export interface WalletBalance {
  * Uses raw private keys for signing transactions.
  */
 export class WalletService {
-  constructor() {}
+  constructor() { }
 
   /**
    * Get address from private key
@@ -52,22 +52,28 @@ export class WalletService {
       transport: http(SEPOLIA.rpc),
     });
 
-    const balance = await publicClient.readContract({
-      address: SEPOLIA.usdc,
-      abi: [
-        {
-          name: 'balanceOf',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'account', type: 'address' }],
-          outputs: [{ name: '', type: 'uint256' }],
-        },
-      ],
-      functionName: 'balanceOf',
-      args: [address],
-    });
+    try {
+      const balance = await publicClient.readContract({
+        address: SEPOLIA.usdc,
+        abi: [
+          {
+            name: 'balanceOf',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'account', type: 'address' }],
+            outputs: [{ name: '', type: 'uint256' }],
+          },
+        ],
+        functionName: 'balanceOf',
+        args: [address],
+      });
 
-    return balance as bigint;
+      return balance as bigint;
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch USDC balance on Sepolia (RPC: ${SEPOLIA.rpc}): ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
@@ -79,22 +85,28 @@ export class WalletService {
       transport: http(ARC.rpc),
     });
 
-    const balance = await publicClient.readContract({
-      address: ARC.usdc,
-      abi: [
-        {
-          name: 'balanceOf',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'account', type: 'address' }],
-          outputs: [{ name: '', type: 'uint256' }],
-        },
-      ],
-      functionName: 'balanceOf',
-      args: [address],
-    });
+    try {
+      const balance = await publicClient.readContract({
+        address: ARC.usdc,
+        abi: [
+          {
+            name: 'balanceOf',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [{ name: 'account', type: 'address' }],
+            outputs: [{ name: '', type: 'uint256' }],
+          },
+        ],
+        functionName: 'balanceOf',
+        args: [address],
+      });
 
-    return balance as bigint;
+      return balance as bigint;
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch USDC balance on Arc (RPC: ${ARC.rpc}): ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
@@ -106,7 +118,13 @@ export class WalletService {
       transport: http(SEPOLIA.rpc),
     });
 
-    return await publicClient.getBalance({ address });
+    try {
+      return await publicClient.getBalance({ address });
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch ETH balance on Sepolia (RPC: ${SEPOLIA.rpc}): ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
@@ -118,25 +136,37 @@ export class WalletService {
       transport: http(ARC.rpc),
     });
 
-    return await publicClient.getBalance({ address });
+    try {
+      return await publicClient.getBalance({ address });
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch ETH balance on Arc (RPC: ${ARC.rpc}): ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
    * Get complete wallet balances on both chains
    */
   async getWalletBalances(address: Address): Promise<WalletBalance> {
-    const [usdcSepolia, usdcArc, ethSepolia, ethArc] = await Promise.all([
-      this.getUSDCBalanceOnSepolia(address),
-      this.getUSDCBalanceOnArc(address),
-      this.getNativeBalanceOnSepolia(address),
-      this.getNativeBalanceOnArc(address),
-    ]);
+    try {
+      const [usdcSepolia, usdcArc, ethSepolia, ethArc] = await Promise.all([
+        this.getUSDCBalanceOnSepolia(address),
+        this.getUSDCBalanceOnArc(address),
+        this.getNativeBalanceOnSepolia(address),
+        this.getNativeBalanceOnArc(address),
+      ]);
 
-    return {
-      address,
-      usdcBalance: usdcSepolia,
-      ethBalance: ethSepolia,
-    };
+      return {
+        address,
+        usdcBalance: usdcSepolia,
+        ethBalance: ethSepolia,
+      };
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch wallet balances: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   /**
