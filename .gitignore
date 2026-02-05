@@ -53,7 +53,7 @@ broadcast/
 out/
 
 # Foundry dependencies
-lib/
+contracts/lib/
 
 # Hardhat
 artifacts/
