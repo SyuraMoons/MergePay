@@ -112,8 +112,8 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
           <button
             onClick={() => setActiveTab('connect')}
             className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'connect'
-                ? 'text-[#F4673B] border-b-2 border-[#F4673B]'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'text-[#F4673B] border-b-2 border-[#F4673B]'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             Connect
@@ -121,8 +121,8 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
           <button
             onClick={() => setActiveTab('manage')}
             className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'manage'
-                ? 'text-[#F4673B] border-b-2 border-[#F4673B]'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'text-[#F4673B] border-b-2 border-[#F4673B]'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             Manage ({wallets.length})
@@ -143,16 +143,16 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                   <span className="ml-auto text-xs text-gray-400">Passkey</span>
                 </h3>
 
-                {!circleConfigured ? (
-                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                    <p className="text-sm text-amber-800">
-                      Circle credentials not configured. Add <code className="px-1 py-0.5 bg-amber-100 rounded">NEXT_PUBLIC_CIRCLE_CLIENT_KEY</code> and <code className="px-1 py-0.5 bg-amber-100 rounded">NEXT_PUBLIC_CIRCLE_CLIENT_URL</code> to your .env file.
-                    </p>
-                  </div>
-                ) : circleAccount ? (
+                {circleAccount ? (
                   <div className="p-4 bg-green-50 rounded-xl border border-green-200">
                     <p className="text-sm text-green-800">
                       Connected: {circleAccount.address.slice(0, 10)}...{circleAccount.address.slice(-8)}
+                    </p>
+                  </div>
+                ) : !circleConfigured ? (
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Circle Smart Wallet is not configured. Add Circle credentials to enable passkey authentication.
                     </p>
                   </div>
                 ) : (
@@ -161,8 +161,8 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                       <button
                         onClick={() => setCircleMode('register')}
                         className={`flex-1 py-2 text-sm rounded-lg transition-colors ${circleMode === 'register'
-                            ? 'bg-[#F4673B] text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-[#F4673B] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
                       >
                         Register
@@ -170,8 +170,8 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                       <button
                         onClick={() => setCircleMode('login')}
                         className={`flex-1 py-2 text-sm rounded-lg transition-colors ${circleMode === 'login'
-                            ? 'bg-[#F4673B] text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-[#F4673B] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                           }`}
                       >
                         Login
