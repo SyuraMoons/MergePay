@@ -25,6 +25,12 @@ enum Command {
   GatewayDeposit = 'gateway-deposit',
   GatewayBalance = 'gateway-balance',
   GatewayTransfer = 'gateway-transfer',
+  // Policy-based treasury automation
+  PolicyConfigure = 'policy-configure',
+  PolicyStatus = 'policy-status',
+  PolicyExecute = 'policy-execute',
+  PolicyCheck = 'policy-check',
+  PoolsInfo = 'pools-info',
   Help = 'help',
 }
 
@@ -57,6 +63,21 @@ function parseArgs(): { command: Command; args: string[] } {
     case 'gateway-transfer':
     case 'gw-transfer':
       return { command: Command.GatewayTransfer, args: args.slice(1) };
+    case 'policy-configure':
+    case 'pc':
+      return { command: Command.PolicyConfigure, args: args.slice(1) };
+    case 'policy-status':
+    case 'ps':
+      return { command: Command.PolicyStatus, args: args.slice(1) };
+    case 'policy-execute':
+    case 'pe':
+      return { command: Command.PolicyExecute, args: args.slice(1) };
+    case 'policy-check':
+    case 'pcheck':
+      return { command: Command.PolicyCheck, args: args.slice(1) };
+    case 'pools-info':
+    case 'pools':
+      return { command: Command.PoolsInfo, args: args.slice(1) };
     case 'help':
     case '--help':
     case '-h':
@@ -106,53 +127,65 @@ function validateEnv(): { valid: boolean; error?: string } {
 function showHelp(): void {
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
-║     Cross-Chain USDC Transfer (CCTP + Gateway)                ║
+║        Arc Treasury Hub - Chain Abstracted Payouts            ║
 ╚═══════════════════════════════════════════════════════════════╝
 
-CCTP Mode (Simple point-to-point transfer, ~5-10 seconds):
-  npm start                          Show wallet status
-  npm start <amount>                 Transfer USDC to same address on Arc
-  npm start transfer <amount>        Transfer USDC to same address on Arc
-  npm start transfer <amount> <addr> Transfer USDC to specific address
-  npm start resume <txHash>          Resume interrupted transfer
+═══════════════════════════════════════════════════════════════
+  TRACK 1: Chain Abstracted USDC Apps (Cross-Chain Transfers)
+═══════════════════════════════════════════════════════════════
 
-Gateway Mode (Unified balance, instant <500ms transfers):
-  npm start gateway-deposit <amount> <chain>
-      Deposit USDC to Gateway on specified chain
-      Example: npm start gateway-deposit 10 sepolia
+CCTP (5-10s transfers between Sepolia ↔ Arc):
+  npm start transfer <amount> [recipient]       # Transfer USDC
+  npm start resume <txHash>                     # Resume from burn TX
 
-  npm start gateway-balance
-      Check unified Gateway balance across chains
+Gateway (Instant <500ms unified balance):
+  npm start gateway-deposit <amount> <chain>    # Deposit to Gateway
+  npm start gateway-balance                     # Check unified balance
+  npm start gateway-transfer <amount> <chain> <recipient>
 
-  npm start gateway-transfer <amount> <destination> <recipient>
-      Instant transfer from unified balance
-      Example: npm start gateway-transfer 5 arc 0x1234...
+═══════════════════════════════════════════════════════════════
+  TRACK 2: AI-Driven Treasury Automation
+═══════════════════════════════════════════════════════════════
 
-Environment (.env):
-  PRIVATE_KEY           Your wallet private key (0x...)
-  RECIPIENT_ADDRESS     Destination on Arc (optional)
-  SEPOLIA_RPC_URL       Custom RPC for Sepolia (optional)
+Policy Configuration:
+  npm start policy-configure <threshold> <mode> [vaultAddress]
+    Example (Auto): npm start policy-configure 1000 auto
+    Example (Manual): npm start policy-configure 1000 manual 0x123...
+
+    Modes:
+      auto   - AI agent chooses between USDC/USDC or USDC/USDT pools
+      manual - Sends excess to specified vault address
+
+Policy Management:
+  npm start policy-status         # View your current policy
+  npm start policy-check          # Check if policy can execute
+  npm start policy-execute        # Manually trigger policy execution
+  npm start pools-info            # View available pools and APY
+
+How It Works:
+  1. Set threshold (e.g., 1000 USDC minimum reserve)
+  2. When balance > threshold, excess is automatically managed:
+     - Auto mode: AI agent compares APYs and chooses best pool
+     - Manual mode: Sends to your vault address
+  3. Policy executes automatically (with cooldown period)
 
 Examples:
+  # Auto mode - AI chooses best yield
+  npm start policy-configure 1000 auto
 
-  CCTP Transfer:
-    npm start transfer 10              # Transfer 10 USDC Sepolia → Arc
+  # Manual mode - cold storage
+  npm start policy-configure 1000 manual 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1
 
-  Gateway Workflow:
-    npm start gateway-deposit 10 sepolia  # Deposit to Gateway
-    # Wait 15-20 minutes for confirmations
-    npm start gateway-balance             # Check unified balance
-    npm start gateway-transfer 5 arc 0x...  # Instant transfer (<500ms)
+  # Check current policy
+  npm start policy-status
+
+  # View pools and APY
+  npm start pools-info
+
+═══════════════════════════════════════════════════════════════
 
 Get Testnet USDC:
   https://faucet.circle.com/         # Circle USDC Faucet
-
-Supported Chains (Gateway):
-  sepolia, arc, base, avalanche
-
-Explorers:
-  Sepolia: https://sepolia.etherscan.io
-  Arc:     https://testnet.arcscan.app
 
 ╔═══════════════════════════════════════════════════════════════╗
 ║  ⚠️  TESTNET ONLY - Tokens have no real value                  ║
@@ -167,16 +200,27 @@ async function main(): Promise<void> {
   // Parse CLI arguments first to determine mode
   const { command, args } = parseArgs();
 
-  // Determine if we're in Gateway mode or CCTP mode
+  // Determine mode based on command
   const isGatewayMode = [
     Command.GatewayDeposit,
     Command.GatewayBalance,
     Command.GatewayTransfer
   ].includes(command);
 
-  const headerTitle = isGatewayMode
-    ? 'Gateway Cross-Chain USDC (Instant Transfers)'
-    : 'CCTP Cross-Chain USDC Transfer: Sepolia → Arc';
+  const isPolicyMode = [
+    Command.PolicyConfigure,
+    Command.PolicyStatus,
+    Command.PolicyExecute,
+    Command.PolicyCheck,
+    Command.PoolsInfo
+  ].includes(command);
+
+  let headerTitle = 'CCTP Cross-Chain USDC Transfer: Sepolia → Arc';
+  if (isGatewayMode) {
+    headerTitle = 'Gateway Cross-Chain USDC (Instant Transfers)';
+  } else if (isPolicyMode) {
+    headerTitle = 'Arc Treasury Hub - AI-Driven Treasury Automation';
+  }
 
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
@@ -366,6 +410,109 @@ async function main(): Promise<void> {
       process.exit(result.success ? 0 : 1);
       break;
     }
+
+    // ========== Policy Automation Commands ==========
+
+    case Command.PolicyConfigure: {
+      if (args.length < 2) {
+        console.error('❌ Error: Threshold and mode required\n');
+        console.log('Usage: npm start policy-configure <threshold> <mode> [vaultAddress]\n');
+        console.log('Examples:\n');
+        console.log('  Auto mode:   npm start policy-configure 1000 auto');
+        console.log('  Manual mode: npm start policy-configure 1000 manual 0x123...\n');
+        process.exit(1);
+      }
+
+      const threshold = parseFloat(args[0]);
+      if (isNaN(threshold) || threshold <= 0) {
+        console.error(`❌ Error: Invalid threshold "${args[0]}"\n`);
+        process.exit(1);
+      }
+
+      const mode = args[1].toLowerCase();
+      if (!['auto', 'manual'].includes(mode)) {
+        console.error(`❌ Error: Invalid mode "${args[1]}". Use 'auto' or 'manual'\n`);
+        process.exit(1);
+      }
+
+      const autoMode = mode === 'auto';
+      const vaultAddress = args[2] as any;
+
+      if (!autoMode && !vaultAddress) {
+        console.error('❌ Error: Vault address required for manual mode\n');
+        process.exit(1);
+      }
+
+      try {
+        await orchestrator.configurePolicy({
+          threshold,
+          autoMode,
+          vaultAddress,
+          allowUSDCPool: true,  // Default allow both pools in auto mode
+          allowUSDTPool: true,
+          cooldownPeriod: 3600, // 1 hour default
+          privateKey,
+        });
+        process.exit(0);
+      } catch (error) {
+        console.error('\n❌ Failed to configure policy:');
+        console.error(error instanceof Error ? error.message : 'Unknown error');
+        process.exit(1);
+      }
+      break;
+    }
+
+    case Command.PolicyStatus: {
+      try {
+        const address = orchestrator['walletService'].getAddressFromPrivateKey(privateKey);
+        await orchestrator.getPolicyStatus(address);
+        process.exit(0);
+      } catch (error) {
+        console.error('\n❌ Failed to get policy status:');
+        console.error(error instanceof Error ? error.message : 'Unknown error');
+        process.exit(1);
+      }
+      break;
+    }
+
+    case Command.PolicyExecute: {
+      try {
+        const address = orchestrator['walletService'].getAddressFromPrivateKey(privateKey);
+        await orchestrator.executePolicy(address, privateKey);
+        process.exit(0);
+      } catch (error) {
+        console.error('\n❌ Failed to execute policy:');
+        console.error(error instanceof Error ? error.message : 'Unknown error');
+        process.exit(1);
+      }
+      break;
+    }
+
+    case Command.PolicyCheck: {
+      try {
+        const address = orchestrator['walletService'].getAddressFromPrivateKey(privateKey);
+        await orchestrator.checkPolicyStatus(address);
+        process.exit(0);
+      } catch (error) {
+        console.error('\n❌ Failed to check policy:');
+        console.error(error instanceof Error ? error.message : 'Unknown error');
+        process.exit(1);
+      }
+      break;
+    }
+
+    case Command.PoolsInfo: {
+      try {
+        await orchestrator.showPoolsInfo();
+        process.exit(0);
+      } catch (error) {
+        console.error('\n❌ Failed to get pools info:');
+        console.error(error instanceof Error ? error.message : 'Unknown error');
+        process.exit(1);
+      }
+      break;
+    }
+
   }
 }
 

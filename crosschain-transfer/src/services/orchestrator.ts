@@ -9,6 +9,7 @@ import { BridgeKitService } from './bridge-kit.js';
 import { GatewayService } from './gateway.js';
 import { BalanceAggregator } from './balance-aggregator.js';
 import { WalletService, createWalletService, type WalletBalance } from './wallet.js';
+import { TreasuryAutomationService } from './treasury-automation.js';
 import { SEPOLIA, ARC } from '../config/contracts.js';
 import type { GatewayChain } from '../config/gateway.js';
 import type {
@@ -19,6 +20,7 @@ import type {
   GatewayDepositResult,
   GatewayBalanceResponse,
 } from '../types/index.js';
+import type { Address } from 'viem';
 
 /**
  * Transfer mode
@@ -76,6 +78,7 @@ export class TransferOrchestrator {
   private gatewayService: GatewayService;
   private balanceAggregator: BalanceAggregator;
   private walletService: WalletService;
+  private treasuryAutomationService: TreasuryAutomationService;
   private progress: TransferEvent[] = [];
 
   constructor() {
@@ -83,6 +86,7 @@ export class TransferOrchestrator {
     this.gatewayService = new GatewayService();
     this.balanceAggregator = new BalanceAggregator();
     this.walletService = createWalletService();
+    this.treasuryAutomationService = new TreasuryAutomationService();
   }
 
   /**
@@ -501,6 +505,191 @@ export class TransferOrchestrator {
         return '~8 seconds';
       default:
         return 'varies';
+    }
+  }
+
+  // ========== Treasury Management Methods ==========
+
+  /**
+   * Configure treasury policy
+   */
+  async configurePolicy(params: {
+    threshold: number;
+    autoMode: boolean;
+    vaultAddress?: Address;
+    allowUSDCPool: boolean;
+    allowUSDTPool: boolean;
+    cooldownPeriod: number;
+    privateKey: string;
+  }): Promise<void> {
+    console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║         Treasury Policy Configuration                         ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+    console.log(`📋 Policy Settings:`);
+    console.log(`   Threshold: ${params.threshold.toFixed(2)} USDC`);
+    console.log(`   Mode: ${params.autoMode ? 'Auto (AI Agent)' : 'Manual (Vault)'}`);
+    if (!params.autoMode && params.vaultAddress) {
+      console.log(`   Vault Address: ${params.vaultAddress}`);
+    }
+    if (params.autoMode) {
+      const pools = [];
+      if (params.allowUSDCPool) pools.push('USDC/USDC');
+      if (params.allowUSDTPool) pools.push('USDC/USDT');
+      console.log(`   Allowed Pools: ${pools.join(', ')}`);
+    }
+    console.log(`   Cooldown: ${params.cooldownPeriod} seconds\n`);
+
+    const result = await this.treasuryAutomationService.configurePolicy({
+      balanceThreshold: params.threshold,
+      autoMode: params.autoMode,
+      vaultAddress: params.vaultAddress,
+      allowUSDCPool: params.allowUSDCPool,
+      allowUSDTPool: params.allowUSDTPool,
+      cooldownPeriod: params.cooldownPeriod,
+      privateKey: params.privateKey as `0x${string}`,
+    });
+
+    console.log(`✅ Policy configured successfully!`);
+    console.log(`   Transaction: ${result.transactionHash}\n`);
+  }
+
+  /**
+   * Get policy status
+   */
+  async getPolicyStatus(userAddress: Address): Promise<void> {
+    console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║              Treasury Policy Status                           ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+    const policy = await this.treasuryAutomationService.getUserPolicy(userAddress);
+    const balance = await this.treasuryAutomationService.getUserBalance(userAddress);
+
+    console.log(`Policy Status:`);
+    console.log(`  Enabled: ${policy.enabled ? 'Yes' : 'No'}`);
+    console.log(`  Mode: ${policy.autoMode ? 'Auto (AI Agent)' : 'Manual (Vault)'}`);
+    console.log(`  Threshold: ${policy.balanceThreshold.toFixed(2)} USDC`);
+
+    if (!policy.autoMode) {
+      console.log(`  Vault Address: ${policy.vaultAddress}`);
+    } else {
+      const pools = [];
+      if (policy.allowUSDCPool) pools.push('USDC/USDC');
+      if (policy.allowUSDTPool) pools.push('USDC/USDT');
+      console.log(`  Allowed Pools: ${pools.join(', ')}`);
+    }
+
+    console.log(`  Cooldown: ${policy.cooldownPeriod} seconds`);
+
+    if (policy.lastExecutionTime > 0) {
+      const date = new Date(policy.lastExecutionTime * 1000);
+      console.log(`  Last Execution: ${date.toLocaleString()}`);
+    } else {
+      console.log(`  Last Execution: Never`);
+    }
+
+    console.log(`\nCurrent Balance:`);
+    console.log(`  Treasury Balance: ${balance.balance.toFixed(2)} USDC`);
+    if (balance.balance > policy.balanceThreshold) {
+      const excess = balance.balance - policy.balanceThreshold;
+      console.log(`  Excess Amount: ${excess.toFixed(2)} USDC (will be managed)\n`);
+    } else {
+      console.log(`  Below Threshold: ${(policy.balanceThreshold - balance.balance).toFixed(2)} USDC needed\n`);
+    }
+  }
+
+  /**
+   * Execute policy manually
+   */
+  async executePolicy(userAddress: Address, privateKey: string): Promise<void> {
+    console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║            Execute Treasury Policy                            ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+    // Check if can execute
+    const canExecute = await this.treasuryAutomationService.canExecutePolicy(userAddress);
+
+    if (!canExecute.canExecute) {
+      console.log(`❌ Cannot execute policy: ${canExecute.reason}\n`);
+      return;
+    }
+
+    console.log(`✅ Policy ready to execute!\n`);
+
+    const result = await this.treasuryAutomationService.executePolicy({
+      userAddress,
+      privateKey: privateKey as `0x${string}`,
+    });
+
+    if (result.executed) {
+      console.log(`✅ Policy executed successfully!`);
+      console.log(`   Transaction: ${result.transactionHash}\n`);
+    } else {
+      console.log(`❌ Policy execution failed\n`);
+    }
+  }
+
+  /**
+   * Check if policy can execute
+   */
+  async checkPolicyStatus(userAddress: Address): Promise<void> {
+    console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║           Policy Execution Check                              ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+    const canExecute = await this.treasuryAutomationService.canExecutePolicy(userAddress);
+    const policy = await this.treasuryAutomationService.getUserPolicy(userAddress);
+    const balance = await this.treasuryAutomationService.getUserBalance(userAddress);
+
+    console.log(`Status: ${canExecute.canExecute ? '✅ Ready' : '❌ Not Ready'}`);
+    console.log(`Reason: ${canExecute.reason}`);
+    console.log(`\nDetails:`);
+    console.log(`  Current Balance: ${balance.balance.toFixed(2)} USDC`);
+    console.log(`  Threshold: ${policy.balanceThreshold.toFixed(2)} USDC`);
+    if (balance.balance > policy.balanceThreshold) {
+      console.log(`  Excess: ${(balance.balance - policy.balanceThreshold).toFixed(2)} USDC\n`);
+    } else {
+      console.log(`  Shortfall: ${(policy.balanceThreshold - balance.balance).toFixed(2)} USDC\n`);
+    }
+  }
+
+  /**
+   * Show available pools
+   */
+  async showPoolsInfo(): Promise<void> {
+    console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║          Available Liquidity Pools                            ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+
+    try {
+      // Get pool count (placeholder - in real implementation, get from contract)
+      console.log(`Pool Information:\n`);
+
+      // Try to get first two pools (USDC/USDC and USDC/USDT)
+      for (let i = 0; i < 2; i++) {
+        try {
+          const pool = await this.treasuryAutomationService.getPoolInfo(i);
+          console.log(`Pool ${i + 1}: ${pool.poolName}`);
+          console.log(`  Address: ${pool.poolAddress}`);
+          console.log(`  APY: ${pool.lastAPY.toFixed(2)}%`);
+          console.log(`  Status: ${pool.active ? 'Active' : 'Inactive'}`);
+          if (pool.lastUpdateTime > 0) {
+            const date = new Date(pool.lastUpdateTime * 1000);
+            console.log(`  Last Update: ${date.toLocaleString()}`);
+          }
+          console.log();
+        } catch (error) {
+          // Pool doesn't exist yet
+          if (i === 0) {
+            console.log(`No pools registered yet.\n`);
+            console.log(`Pools will be registered by the contract owner.\n`);
+          }
+          break;
+        }
+      }
+    } catch (error) {
+      console.log(`Unable to fetch pool information.\n`);
+      console.log(`Pools will be available after contract owner registers them.\n`);
     }
   }
 }
