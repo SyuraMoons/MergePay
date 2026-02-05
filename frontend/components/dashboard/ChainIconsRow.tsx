@@ -8,19 +8,19 @@ interface ChainIconsRowProps {
   onChainClick?: (chainId: string) => void;
 }
 
-// Real chain icon URLs from official sources
+// Chain icon URLs - using local assets from ui directory
 const chainData: Record<string, { color: string; iconUrl: string }> = {
   base: {
     color: '#0052FF',
-    iconUrl: 'https://raw.githubusercontent.com/base-org/brand-kit/main/logo/symbol/Base_Symbol_Blue.svg'
+    iconUrl: '/ui/base-logo.png'
   },
   arbitrum: {
     color: '#28A0F0',
-    iconUrl: 'https://raw.githubusercontent.com/OffchainLabs/arbitrum-brand-assets/main/logo/png/Arbitrum_Symbol_-_Full_color_-_White_background.png'
+    iconUrl: '/ui/arbitrum-arb-logo.png'
   },
   optimism: {
     color: '#FF0420',
-    iconUrl: 'https://raw.githubusercontent.com/ethereum-optimism/brand-kit/main/assets/images/Profile-Logo.png'
+    iconUrl: '/ui/optimism-ethereum-op-logo.png'
   },
   polygon: {
     color: '#8247E5',

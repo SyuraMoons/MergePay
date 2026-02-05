@@ -9,9 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@bigmi/react": "0.6.0",
+    "@circle-fin/modular-wallets-core": "^1.0.13",
+    "@lifi/widget": "^3.40.6",
+    "@mysten/dapp-kit": "0.19.0",
+    "@solana/wallet-adapter-react": "0.15.35",
+    "@tanstack/react-query": "^5.90.20",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "viem": "^2.45.1",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

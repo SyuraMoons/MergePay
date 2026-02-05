@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Transpile LiFi widget and its dependencies
+  transpilePackages: [
+    '@lifi/widget',
+    '@lifi/sdk',
+    '@lifi/wallet-management',
+  ],
   images: {
     remotePatterns: [
       {
@@ -18,3 +24,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
