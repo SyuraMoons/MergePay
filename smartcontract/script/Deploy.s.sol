@@ -9,19 +9,20 @@ contract DeployScript is Script {
         // Load private key from environment
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
 
-        // Arc Testnet USDC address (check docs for actual address)
-        // Use placeholder - replace with actual Arc testnet USDC
+        // Arc Testnet addresses
         address usdcOnArc = vm.envAddress("USDC_ARC_ADDRESS");
         address storkOracle = vm.envAddress("STORK_ORACLE_ADDRESS");
+        address cctpMessageTransmitter = vm.envAddress("CCTP_MESSAGE_TRANSMITTER_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy treasury with both USDC and Oracle addresses
-        MergeTreasury treasury = new MergeTreasury(usdcOnArc, storkOracle);
+        // Deploy treasury with USDC, Oracle, and CCTP MessageTransmitter addresses
+        MergeTreasury treasury = new MergeTreasury(usdcOnArc, storkOracle, cctpMessageTransmitter);
 
         console.log("MergeTreasury deployed at:", address(treasury));
         console.log("USDC address:", usdcOnArc);
         console.log("Stork Oracle address:", storkOracle);
+        console.log("CCTP MessageTransmitter address:", cctpMessageTransmitter);
 
         vm.stopBroadcast();
     }

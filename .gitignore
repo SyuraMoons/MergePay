@@ -5,7 +5,7 @@ node_modules/
 .pnp
 .pnp.js
 .claude
-
+.kilocode
 # ============================================
 # FRONTEND (Next.js/React)
 # ============================================
@@ -73,6 +73,10 @@ typechain-types/
 .env.production.local
 *.key
 *.pem
+
+# Circle Developer-Controlled Wallets recovery files
+recovery/
+*.dat
 
 # ============================================
 # TESTING
