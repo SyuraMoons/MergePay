@@ -8,8 +8,7 @@ import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 // Mock CCTP MessageTransmitter for testing
 contract MockCCTPMessageTransmitter {
-    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool))
-        public usedNonces;
+    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool)) public usedNonces;
     MergeTreasury public treasury;
 
     error AlreadyProcessed();
@@ -30,13 +29,8 @@ contract MockCCTPMessageTransmitter {
         bytes calldata attestation
     ) external returns (bool success) {
         // Decode message to get nonce and sourceDomain
-        (
-            uint32 version,
-            address sender,
-            uint256 amount,
-            uint32 sourceDomain,
-            uint64 nonce
-        ) = _decodeMessage(message);
+        (uint32 version, address sender, uint256 amount, uint32 sourceDomain, uint64 nonce) =
+            _decodeMessage(message);
 
         require(version == 2, "Invalid CCTP version");
         require(!usedNonces[sourceDomain][nonce], "Already processed");
@@ -52,9 +46,7 @@ contract MockCCTPMessageTransmitter {
         return true;
     }
 
-    function _decodeMessage(
-        bytes calldata message
-    )
+    function _decodeMessage(bytes calldata message)
         internal
         pure
         returns (
@@ -168,11 +160,7 @@ contract MergeTreasuryTest is Test {
         cctpTransmitter = new MockCCTPMessageTransmitter();
 
         // Deploy treasury
-        treasury = new MergeTreasury(
-            address(usdc),
-            address(oracle),
-            address(cctpTransmitter)
-        );
+        treasury = new MergeTreasury(address(usdc), address(oracle), address(cctpTransmitter));
 
         // Set treasury in CCTP mock
         cctpTransmitter.setTreasury(address(treasury));
@@ -214,11 +202,13 @@ contract MergeTreasuryTest is Test {
         // Check balances
         assertEq(treasury.userBalances(payer), amount);
         assertEq(treasury.totalTreasuryBalance(), amount);
+        assertEq(treasury.getUserPaymentCount(payer), 1);
+
         // Check payment details
-        // Payment memory payment = treasury.getPayment(0);
-        // assertEq(payment.payer, payer);
-        // assertEq(payment.amount, amount);
-        // assertEq(payment.sourceChainId, sourceDomain);
+        MergeTreasury.Payment memory payment = treasury.getPayment(0);
+        assertEq(payment.payer, payer);
+        assertEq(payment.amount, amount);
+        assertEq(payment.sourceChainId, sourceDomain);
     }
 
     function test_ReceiveCctpMessage_ReplayProtection() public {
@@ -227,12 +217,7 @@ contract MergeTreasuryTest is Test {
         uint64 nonce = 1;
 
         bytes memory message = _createMockCctpMessage(
-            address(0),
-            address(0),
-            payer,
-            amount,
-            sourceDomain,
-            nonce
+            address(0), address(0), payer, amount, sourceDomain, nonce
         );
         bytes memory attestation = hex"01";
 
@@ -250,12 +235,7 @@ contract MergeTreasuryTest is Test {
         uint64 nonce = 1;
 
         bytes memory message = _createMockCctpMessage(
-            address(0),
-            address(0),
-            payer,
-            amount,
-            sourceDomain,
-            nonce
+            address(0), address(0), payer, amount, sourceDomain, nonce
         );
         bytes memory attestation = hex"01";
 
@@ -281,14 +261,13 @@ contract MergeTreasuryTest is Test {
     ) internal pure returns (bytes memory) {
         // Use abi.encode for easy ABI decoding
         // Note: burnToken and mintRecipient are not needed for decoding but kept for consistency
-        return
-            abi.encode(
-                uint32(2), // version (CCTP V2)
-                sender, // sender address
-                amount, // amount
-                sourceDomain, // source domain
-                nonce // nonce
-            );
+        return abi.encode(
+            uint32(2),     // version (CCTP V2)
+            sender,        // sender address
+            amount,        // amount
+            sourceDomain,  // source domain
+            nonce          // nonce
+        );
     }
 
     function test_Deposit() public {
@@ -363,7 +342,18 @@ contract MergeTreasuryTest is Test {
     // ========== Oracle Tests ==========
 
     function test_GetPrice_NoCache() public {
-        (int256 price, uint256 timestamp) = treasury.getPrice(ETH_USD);
+        (int256 price, uint256 timestamp) = treasury.getPrice(ETH_USD, false);
+
+        assertEq(price, 3000 * 1e8);
+        assertEq(timestamp, block.timestamp);
+    }
+
+    function test_GetPrice_WithCache() public {
+        // First call caches the price
+        treasury.getPrice(ETH_USD, false);
+
+        // Second call with useCache=true should return cached price
+        (int256 price, uint256 timestamp) = treasury.getPrice(ETH_USD, true);
 
         assertEq(price, 3000 * 1e8);
         assertEq(timestamp, block.timestamp);
@@ -375,11 +365,121 @@ contract MergeTreasuryTest is Test {
         assetIds[1] = BTC_USD;
 
         (int256[] memory prices, uint256[] memory timestamps) = treasury
-            .getMultiplePrices(assetIds);
+            .getMultiplePrices(assetIds, false);
 
         assertEq(prices.length, 2);
         assertEq(prices[0], 3000 * 1e8);
         assertEq(prices[1], 50000 * 1e8);
+    }
+
+    function test_CheckPriceAndExecute_UpperThreshold() public {
+        // Set threshold to $2500, current price is $3000
+        int256 upperThreshold = 2500 * 1e8;
+        int256 lowerThreshold = 0;
+
+        (bool executed, int256 price) = treasury.checkPriceAndExecute(
+            ETH_USD,
+            upperThreshold,
+            lowerThreshold,
+            1 // action type 1 = emit event
+        );
+
+        assertTrue(executed);
+        assertEq(price, 3000 * 1e8);
+    }
+
+    function test_CheckPriceAndExecute_LowerThreshold() public {
+        // Set lower threshold to $3500, current price is $3000 (below threshold)
+        int256 upperThreshold = 0;
+        int256 lowerThreshold = 3500 * 1e8;
+
+        (bool executed, int256 price) = treasury.checkPriceAndExecute(
+            ETH_USD,
+            upperThreshold,
+            lowerThreshold,
+            1
+        );
+
+        assertTrue(executed);
+        assertEq(price, 3000 * 1e8);
+    }
+
+    function test_CheckPriceAndExecute_NoThresholdCrossed() public {
+        // Set thresholds that current price doesn't cross
+        int256 upperThreshold = 4000 * 1e8;
+        int256 lowerThreshold = 2000 * 1e8;
+
+        (bool executed, int256 price) = treasury.checkPriceAndExecute(
+            ETH_USD,
+            upperThreshold,
+            lowerThreshold,
+            1
+        );
+
+        assertFalse(executed);
+        assertEq(price, 3000 * 1e8);
+    }
+
+    function test_IsCachedPriceFresh() public {
+        // Initially no cache
+        assertFalse(treasury.isCachedPriceFresh(ETH_USD));
+
+        // Cache a price
+        treasury.getPrice(ETH_USD, false);
+
+        // Cache should be fresh
+        assertTrue(treasury.isCachedPriceFresh(ETH_USD));
+
+        // Fast forward past staleness threshold
+        vm.warp(block.timestamp + 61);
+
+        // Cache should be stale
+        assertFalse(treasury.isCachedPriceFresh(ETH_USD));
+    }
+
+    function test_GetCachedPrice() public {
+        // Initially no cache
+        (int256 price, uint256 timestamp, bool isValid) = treasury
+            .getCachedPrice(ETH_USD);
+        assertEq(price, 0);
+        assertEq(timestamp, 0);
+        assertFalse(isValid);
+
+        // Cache a price
+        treasury.getPrice(ETH_USD, false);
+
+        // Should return cached price
+        (price, timestamp, isValid) = treasury.getCachedPrice(ETH_USD);
+        assertEq(price, 3000 * 1e8);
+        assertTrue(isValid);
+    }
+
+    function test_UpdatePriceCache() public {
+        bytes32[] memory assetIds = new bytes32[](2);
+        assetIds[0] = ETH_USD;
+        assetIds[1] = BTC_USD;
+
+        vm.prank(owner);
+        treasury.updatePriceCache(assetIds);
+
+        // Check prices were cached
+        (int256 price, uint256 timestamp, bool isValid) = treasury
+            .getCachedPrice(ETH_USD);
+        assertEq(price, 3000 * 1e8);
+        assertTrue(isValid);
+
+        (price, timestamp, isValid) = treasury.getCachedPrice(BTC_USD);
+        assertEq(price, 50000 * 1e8);
+        assertTrue(isValid);
+    }
+
+    function test_UpdatePriceCache_NotOwner() public {
+        bytes32[] memory assetIds = new bytes32[](1);
+        assetIds[0] = ETH_USD;
+
+        vm.prank(user);
+        vm.expectRevert();
+        treasury.updatePriceCache(assetIds);
     }
 
     // ========== Multi-Wallet Aggregation Tests ==========
@@ -676,7 +776,7 @@ contract MergeTreasuryTest is Test {
     function test_PullFunds_SelfPullOnly() public {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
-        uint256 amount = 100 * 10 ** 6;
+        uint256 amount = 100 * 10**6;
 
         vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
@@ -702,7 +802,7 @@ contract MergeTreasuryTest is Test {
         address wallet1 = address(0x111);
         address wallet2 = address(0x222);
         address attacker = address(0x999);
-        uint256 amount = 100 * 10 ** 6;
+        uint256 amount = 100 * 10**6;
 
         // Register two wallets to same userId
         vm.startPrank(wallet1);
@@ -737,7 +837,7 @@ contract MergeTreasuryTest is Test {
     function test_EmergencyWithdraw_SeparateAccounting() public {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
-        uint256 amount = 400 * 10 ** 6;
+        uint256 amount = 400 * 10**6;
 
         // Deposit funds
         vm.startPrank(wallet1);
@@ -753,7 +853,7 @@ contract MergeTreasuryTest is Test {
 
         // Emergency withdraw
         uint256 ownerBalanceBefore = usdc.balanceOf(owner);
-        uint256 emergencyAmount = 100 * 10 ** 6;
+        uint256 emergencyAmount = 100 * 10**6;
 
         vm.prank(owner);
         treasury.emergencyWithdraw(emergencyAmount);
@@ -792,8 +892,8 @@ contract MergeTreasuryTest is Test {
     function test_GetAggregatedBalance_ChecksWalletBalance() public {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
-        uint256 allowanceAmount = 1000 * 10 ** 6;
-        uint256 actualBalance = 50 * 10 ** 6;
+        uint256 allowanceAmount = 1000 * 10**6;
+        uint256 actualBalance = 50 * 10**6;
 
         vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
@@ -812,7 +912,7 @@ contract MergeTreasuryTest is Test {
     function test_WithdrawByUserId_InsufficientBalance() public {
         bytes32 userId = keccak256("user1");
         address wallet1 = address(0x111);
-        uint256 amount = 100 * 10 ** 6;
+        uint256 amount = 100 * 10**6;
 
         vm.prank(wallet1);
         treasury.registerWallet(userId, wallet1);
@@ -821,5 +921,242 @@ contract MergeTreasuryTest is Test {
         vm.prank(wallet1);
         vm.expectRevert("Insufficient balance");
         treasury.withdrawByUserId(userId, amount, wallet1);
+    }
+
+    // ========== Batch Payout Tests ==========
+
+    function test_BatchPayout_OwnerTreasury() public {
+        // Setup: Fund owner's treasury balance
+        uint256 depositAmount = 1000 * 10**6;
+        vm.startPrank(owner);
+        usdc.mint(owner, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+        vm.stopPrank();
+
+        // Create recipients
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](3);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0x456), 200 * 10**6);
+        recipients[2] = MergeTreasury.PayoutRecipient(address(0x789), 300 * 10**6);
+
+        // Execute batch payout (sourceType 0 = owner treasury, deducts from totalTreasuryBalance not userBalances[owner])
+        vm.prank(owner);
+        treasury.batchPayout(recipients, 0, bytes32(0));
+
+        // Verify balances
+        assertEq(usdc.balanceOf(address(0x123)), 100 * 10**6);
+        assertEq(usdc.balanceOf(address(0x456)), 200 * 10**6);
+        assertEq(usdc.balanceOf(address(0x789)), 300 * 10**6);
+        assertEq(treasury.totalTreasuryBalance(), 400 * 10**6); // 1000 - 600
+        assertEq(treasury.userBalances(owner), depositAmount); // User balance unchanged (owner treasury deducts from total)
+    }
+
+    function test_BatchPayout_UserBalance() public {
+        // Setup: User deposits funds
+        uint256 depositAmount = 500 * 10**6;
+        vm.startPrank(user);
+        usdc.mint(user, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+
+        // Create recipients
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](2);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0xABC), 150 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0xDEF), 250 * 10**6);
+
+        // Execute batch payout
+        treasury.batchPayout(recipients, 1, bytes32(0));
+        vm.stopPrank();
+
+        // Verify balances
+        assertEq(usdc.balanceOf(address(0xABC)), 150 * 10**6);
+        assertEq(usdc.balanceOf(address(0xDEF)), 250 * 10**6);
+        assertEq(treasury.userBalances(user), 100 * 10**6); // 500 - 400
+    }
+
+    function test_BatchPayout_UserIdBalance() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        uint256 amount = 500 * 10**6;
+
+        // Register wallet and deposit
+        vm.startPrank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+        usdc.mint(wallet1, amount);
+        usdc.approve(address(treasury), amount);
+        treasury.pullFunds(wallet1, amount);
+
+        // Create recipients
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](2);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x222), 100 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0x333), 150 * 10**6);
+
+        // Execute batch payout
+        treasury.batchPayout(recipients, 2, userId);
+        vm.stopPrank();
+
+        // Verify balances
+        assertEq(usdc.balanceOf(address(0x222)), 100 * 10**6);
+        assertEq(usdc.balanceOf(address(0x333)), 150 * 10**6);
+        assertEq(treasury.userIdBalances(userId), 250 * 10**6); // 500 - 250
+    }
+
+    function test_BatchPayout_InsufficientBalance() public {
+        // Setup: User has insufficient balance
+        uint256 depositAmount = 100 * 10**6;
+        vm.startPrank(user);
+        usdc.mint(user, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+
+        // Create recipients requiring more than available
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](2);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0xABC), 60 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0xDEF), 50 * 10**6);
+
+        // Should fail with insufficient balance
+        vm.expectRevert("Insufficient balance");
+        treasury.batchPayout(recipients, 1, bytes32(0));
+        vm.stopPrank();
+    }
+
+    function test_BatchPayout_NotOwner() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](1);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+
+        // Non-owner trying to use owner treasury
+        vm.prank(user);
+        vm.expectRevert("Not owner");
+        treasury.batchPayout(recipients, 0, bytes32(0));
+    }
+
+    function test_BatchPayout_NotAuthorized() public {
+        bytes32 userId = keccak256("user1");
+        address wallet1 = address(0x111);
+        address attacker = address(0x999);
+
+        // Register wallet and deposit
+        vm.startPrank(wallet1);
+        treasury.registerWallet(userId, wallet1);
+        usdc.mint(wallet1, 500 * 10**6);
+        usdc.approve(address(treasury), 500 * 10**6);
+        treasury.pullFunds(wallet1, 500 * 10**6);
+        vm.stopPrank();
+
+        // Attacker tries to payout from userId balance
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](1);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+
+        vm.prank(attacker);
+        vm.expectRevert("Not authorized");
+        treasury.batchPayout(recipients, 2, userId);
+    }
+
+    function test_BatchPayout_EmptyRecipients() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](0);
+
+        vm.prank(owner);
+        vm.expectRevert("Empty recipients");
+        treasury.batchPayout(recipients, 0, bytes32(0));
+    }
+
+    function test_BatchPayout_TooManyRecipients() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](101);
+        for (uint256 i = 0; i < 101; i++) {
+            recipients[i] = MergeTreasury.PayoutRecipient(address(uint160(i + 1)), 1 * 10**6);
+        }
+
+        vm.prank(owner);
+        vm.expectRevert("Too many recipients");
+        treasury.batchPayout(recipients, 0, bytes32(0));
+    }
+
+    function test_BatchPayout_InvalidRecipient() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](2);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0), 50 * 10**6); // Invalid
+
+        vm.prank(owner);
+        vm.expectRevert("Invalid recipient");
+        treasury.batchPayout(recipients, 0, bytes32(0));
+    }
+
+    function test_BatchPayout_InvalidAmount() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](2);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0x456), 0); // Invalid
+
+        vm.prank(owner);
+        vm.expectRevert("Invalid amount");
+        treasury.batchPayout(recipients, 0, bytes32(0));
+    }
+
+    function test_EstimateBatchPayout() public {
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](3);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+        recipients[1] = MergeTreasury.PayoutRecipient(address(0x456), 200 * 10**6);
+        recipients[2] = MergeTreasury.PayoutRecipient(address(0x789), 300 * 10**6);
+
+        (uint256 totalAmount, uint256 recipientCount) = treasury.estimateBatchPayout(recipients);
+
+        assertEq(totalAmount, 600 * 10**6);
+        assertEq(recipientCount, 3);
+    }
+
+    function test_ConditionalBatchPayout_Success() public {
+        // Setup: Fund owner's treasury with 1000 USDC
+        uint256 depositAmount = 1000 * 10**6;
+        vm.startPrank(owner);
+        usdc.mint(owner, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+        vm.stopPrank();
+
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](1);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+
+        // Should succeed (balance 1000 >= threshold 500)
+        vm.prank(owner);
+        treasury.conditionalBatchPayout(recipients, 500 * 10**6, 0, bytes32(0));
+
+        assertEq(usdc.balanceOf(address(0x123)), 100 * 10**6);
+    }
+
+    function test_ConditionalBatchPayout_BelowThreshold() public {
+        // Setup: Fund owner's treasury with only 400 USDC
+        uint256 depositAmount = 400 * 10**6;
+        vm.startPrank(owner);
+        usdc.mint(owner, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+        vm.stopPrank();
+
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](1);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0x123), 100 * 10**6);
+
+        // Should fail (balance 400 < threshold 500)
+        vm.prank(owner);
+        vm.expectRevert("Balance below threshold");
+        treasury.conditionalBatchPayout(recipients, 500 * 10**6, 0, bytes32(0));
+    }
+
+    function test_ConditionalBatchPayout_UserBalance() public {
+        // Setup: User deposits 600 USDC
+        uint256 depositAmount = 600 * 10**6;
+        vm.startPrank(user);
+        usdc.mint(user, depositAmount);
+        usdc.approve(address(treasury), depositAmount);
+        treasury.deposit(depositAmount);
+
+        MergeTreasury.PayoutRecipient[] memory recipients = new MergeTreasury.PayoutRecipient[](1);
+        recipients[0] = MergeTreasury.PayoutRecipient(address(0xABC), 100 * 10**6);
+
+        // Should succeed (user balance 600 >= threshold 500)
+        treasury.conditionalBatchPayout(recipients, 500 * 10**6, 1, bytes32(0));
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(address(0xABC)), 100 * 10**6);
+        assertEq(treasury.userBalances(user), 500 * 10**6);
     }
 }

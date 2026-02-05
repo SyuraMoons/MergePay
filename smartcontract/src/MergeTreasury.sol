@@ -18,7 +18,10 @@ interface IMessageTransmitter {
      * @param attestation The Circle API attestation signature
      * @return success True if message was successfully processed
      */
-    function receiveMessage(bytes calldata message, bytes calldata attestation) external returns (bool success);
+    function receiveMessage(
+        bytes calldata message,
+        bytes calldata attestation
+    ) external returns (bool success);
 
     /**
      * @notice Check if a nonce has been used
@@ -26,7 +29,10 @@ interface IMessageTransmitter {
      * @param nonce Message nonce
      * @return used True if nonce has been used
      */
-    function usedNonces(uint256 sourceDomain, uint64 nonce) external view returns (bool);
+    function usedNonces(
+        uint256 sourceDomain,
+        uint64 nonce
+    ) external view returns (bool);
 }
 
 /**
@@ -45,7 +51,8 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     IMessageTransmitter public immutable cctpMessageTransmitter;
 
     // Track processed CCTP messages to prevent replay attacks
-    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool)) public processedCctpNonces;
+    mapping(uint256 sourceDomain => mapping(uint64 nonce => bool))
+        public processedCctpNonces;
 
     // Track user balances (address-based for existing functionality)
     mapping(address => uint256) public userBalances;
@@ -70,27 +77,11 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     // Track emergency withdrawals separately for proper accounting
     uint256 public emergencyWithdrawnTotal;
 
-    // Price caching to reduce oracle calls
-    uint256 public lastPriceUpdate;
-    mapping(bytes32 => int256) public cachedPrices;
-    mapping(bytes32 => uint256) public cachedPriceTimestamps;
-
-    // Price staleness threshold (in seconds)
-    uint256 public constant PRICE_STALENESS_THRESHOLD = 60;
-
     // Track total treasury balance
     uint256 public totalTreasuryBalance;
 
     // Track deposits by source chain for analytics
-    struct Payment {
-        address payer;
-        uint256 amount;
-        uint256 sourceChainId;
-        uint256 timestamp;
-    }
-
-    Payment[] public paymentHistory;
-    mapping(address => uint256[]) public userPaymentIds;
+    // Note: Payment details are emitted in events for off-chain indexing
 
     // Events
     event PaymentReceived(
@@ -117,21 +108,30 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
     event TreasuryDeposit(address indexed from, uint256 amount);
 
-    event PriceFetched(bytes32 indexed assetId, int256 price, uint256 timestamp);
-    event PriceCached(bytes32 indexed assetId, int256 price, uint256 timestamp);
-    event AgentActionExecuted(
+    event PriceFetched(
         bytes32 indexed assetId,
         int256 price,
-        int256 threshold,
-        bool actionTaken
+        uint256 timestamp
     );
-
     // ========== Multi-Wallet Aggregation Events ==========
 
     event WalletRegistered(bytes32 indexed userId, address wallet);
-    event FundsPulled(bytes32 indexed userId, address indexed wallet, uint256 amount);
-    event WithdrawalByUserId(bytes32 indexed userId, uint256 amount, address indexed to, uint256 timestamp);
-    event EmergencyWithdrawal(address indexed owner, uint256 amount, string note);
+    event FundsPulled(
+        bytes32 indexed userId,
+        address indexed wallet,
+        uint256 amount
+    );
+    event WithdrawalByUserId(
+        bytes32 indexed userId,
+        uint256 amount,
+        address indexed to,
+        uint256 timestamp
+    );
+    event EmergencyWithdrawal(
+        address indexed owner,
+        uint256 amount,
+        string note
+    );
 
     constructor(
         address _usdc,
@@ -140,7 +140,10 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     ) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC address");
         require(_storkOracle != address(0), "Invalid oracle address");
-        require(_cctpMessageTransmitter != address(0), "Invalid CCTP MessageTransmitter");
+        require(
+            _cctpMessageTransmitter != address(0),
+            "Invalid CCTP MessageTransmitter"
+        );
         usdc = IERC20(_usdc);
         storkOracle = IStorkOracle(_storkOracle);
         cctpMessageTransmitter = IMessageTransmitter(_cctpMessageTransmitter);
@@ -158,8 +161,13 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         bytes calldata attestation
     ) external nonReentrant {
         // Parse CCTP message format to get nonce and sourceDomain
-        (uint32 version, address sender, uint256 amount, uint32 sourceDomain, uint64 nonce) =
-            _decodeCctpMessage(message);
+        (
+            uint32 version,
+            address sender,
+            uint256 amount,
+            uint32 sourceDomain,
+            uint64 nonce
+        ) = _decodeCctpMessage(message);
 
         require(version == 2, "Invalid CCTP version");
         require(!processedCctpNonces[sourceDomain][nonce], "Already processed");
@@ -169,7 +177,10 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
         // Call CCTP MessageTransmitter to mint USDC to this contract
         // This will mint the USDC directly to address(this)
-        bool success = cctpMessageTransmitter.receiveMessage(message, attestation);
+        bool success = cctpMessageTransmitter.receiveMessage(
+            message,
+            attestation
+        );
         require(success, "CCTP receiveMessage failed");
 
         // Now the USDC has been minted to this contract
@@ -177,20 +188,14 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         userBalances[sender] += amount;
         totalTreasuryBalance += amount;
 
-        // Record payment
-        Payment memory payment = Payment({
-            payer: sender,
-            amount: amount,
-            sourceChainId: sourceDomain,
-            timestamp: block.timestamp
-        });
-
-        uint256 paymentId = paymentHistory.length;
-        paymentHistory.push(payment);
-        userPaymentIds[sender].push(paymentId);
-
         emit PaymentReceived(sender, amount, sourceDomain, block.timestamp);
-        emit CctpMessageReceived(sender, amount, sourceDomain, nonce, block.timestamp);
+        emit CctpMessageReceived(
+            sender,
+            amount,
+            sourceDomain,
+            nonce,
+            block.timestamp
+        );
     }
 
     /**
@@ -220,7 +225,11 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @param amount The amount to withdraw
      * @param to Destination address
      */
-    function withdrawByUserId(bytes32 userId, uint256 amount, address to) external nonReentrant {
+    function withdrawByUserId(
+        bytes32 userId,
+        uint256 amount,
+        address to
+    ) external nonReentrant {
         require(to != address(0), "Invalid destination");
         require(amount > 0, "Amount must be greater than 0");
         require(userIdBalances[userId] >= amount, "Insufficient balance");
@@ -237,7 +246,10 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
             }
         }
 
-        require(isAuthorized, "Not authorized: sender not registered to this userId");
+        require(
+            isAuthorized,
+            "Not authorized: sender not registered to this userId"
+        );
 
         // Update balances
         userIdBalances[userId] -= amount;
@@ -275,7 +287,10 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @param nonce Message nonce
      * @return processed True if already processed
      */
-    function isCctpNonceProcessed(uint32 sourceDomain, uint64 nonce) external view returns (bool) {
+    function isCctpNonceProcessed(
+        uint32 sourceDomain,
+        uint64 nonce
+    ) external view returns (bool) {
         return processedCctpNonces[sourceDomain][nonce];
     }
 
@@ -291,7 +306,9 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @return sourceDomain Source CCTP domain
      * @return nonce Message nonce for replay protection
      */
-    function _decodeCctpMessage(bytes calldata message)
+    function _decodeCctpMessage(
+        bytes calldata message
+    )
         internal
         pure
         returns (
@@ -310,23 +327,6 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Get user's payment history count
-     */
-    function getUserPaymentCount(address user) external view returns (uint256) {
-        return userPaymentIds[user].length;
-    }
-
-    /**
-     * @notice Get payment details by ID
-     */
-    function getPayment(
-        uint256 paymentId
-    ) external view returns (Payment memory) {
-        require(paymentId < paymentHistory.length, "Invalid payment ID");
-        return paymentHistory[paymentId];
-    }
-
-    /**
      * @notice Get contract USDC balance
      */
     function getContractBalance() external view returns (uint256) {
@@ -337,13 +337,18 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @notice Emergency withdraw (only owner)
      */
     function emergencyWithdraw(uint256 amount) external onlyOwner {
-        uint256 availableBalance = totalTreasuryBalance - emergencyWithdrawnTotal;
+        uint256 availableBalance = totalTreasuryBalance -
+            emergencyWithdrawnTotal;
         require(amount <= availableBalance, "Insufficient available balance");
         require(usdc.transfer(owner(), amount), "Transfer failed");
 
         emergencyWithdrawnTotal += amount;
 
-        emit EmergencyWithdrawal(owner(), amount, "Emergency withdrawal - accounting offset tracked");
+        emit EmergencyWithdrawal(
+            owner(),
+            amount,
+            "Emergency withdrawal - accounting offset tracked"
+        );
     }
 
     // ========== Multi-Wallet Aggregation Functions ==========
@@ -356,9 +361,15 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      */
     function registerWallet(bytes32 userId, address wallet) external {
         require(wallet != address(0), "Invalid wallet");
-        require(walletToUser[wallet] == bytes32(0), "Wallet already registered");
+        require(
+            walletToUser[wallet] == bytes32(0),
+            "Wallet already registered"
+        );
         require(msg.sender == wallet, "Only wallet owner can register");
-        require(userWallets[userId].length < MAX_WALLETS_PER_USER, "Too many wallets registered");
+        require(
+            userWallets[userId].length < MAX_WALLETS_PER_USER,
+            "Too many wallets registered"
+        );
 
         userWallets[userId].push(wallet);
         walletToUser[wallet] = userId;
@@ -442,165 +453,357 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     /**
      * @notice Get the latest price for an asset, using cache if available
      * @param assetId The asset identifier (e.g., keccak256("ETH/USD"))
-     * @param useCache Whether to use cached price if available
      * @return price The latest price
      * @return timestamp The timestamp of the price
      */
     function getPrice(
-        bytes32 assetId,
-        bool useCache
+        bytes32 assetId
     ) external returns (int256 price, uint256 timestamp) {
-        if (useCache) {
-            (int256 cachedPrice, uint256 cachedTimestamp, bool isValid) = _getCachedPrice(
-                assetId
-            );
-            if (isValid) {
-                return (cachedPrice, cachedTimestamp);
-            }
-        }
-
         (price, timestamp) = storkOracle.getLatestPrice(assetId);
         emit PriceFetched(assetId, price, timestamp);
-        _cachePrice(assetId, price, timestamp);
     }
 
     /**
      * @notice Get multiple prices in a single call
      * @param assetIds Array of asset identifiers
-     * @param useCache Whether to use cached prices if available
      * @return prices Array of prices
      * @return timestamps Array of timestamps
      */
     function getMultiplePrices(
-        bytes32[] calldata assetIds,
-        bool useCache
+        bytes32[] calldata assetIds
     ) external returns (int256[] memory prices, uint256[] memory timestamps) {
         prices = new int256[](assetIds.length);
         timestamps = new uint256[](assetIds.length);
 
         for (uint256 i = 0; i < assetIds.length; i++) {
-            (int256 price, uint256 timestamp) = this.getPrice(assetIds[i], useCache);
+            (int256 price, uint256 timestamp) = this.getPrice(assetIds[i]);
             prices[i] = price;
             timestamps[i] = timestamp;
         }
     }
 
+    // ========== POLICY-BASED TREASURY AUTOMATION ==========
+
+    // ========== POLICY-BASED TREASURY AUTOMATION ==========
+
     /**
-     * @notice Check price and execute action based on threshold
-     * @dev Basic agent decision logic - executes action if price crosses threshold
-     * @param assetId The asset identifier to check
-     * @param upperThreshold Upper price threshold (action if price > this)
-     * @param lowerThreshold Lower price threshold (action if price < this)
-     * @param actionType Type of action to execute (0 = none, 1 = emit only)
-     * @return executed Whether action was executed
-     * @return price The price that triggered the action
+     * Treasury policy configuration
      */
-    function checkPriceAndExecute(
-        bytes32 assetId,
-        int256 upperThreshold,
-        int256 lowerThreshold,
-        uint256 actionType
-    ) external returns (bool executed, int256 price) {
-        (price, ) = this.getPrice(assetId, false);
+    struct TreasuryPolicy {
+        uint256 balanceThreshold; // Minimum USDC to keep in treasury
+        bool enabled; // Policy active/inactive
+        bool autoMode; // true = AI agent, false = manual
+        address vaultAddress; // For manual mode: where to send excess
+        bool allowUSDCPool; // Allow USDC/USDC pool
+        bool allowUSDTPool; // Allow USDC/USDT pool
+        uint256 lastExecutionTime; // Track when policy last ran
+        uint256 cooldownPeriod; // Minimum time between executions (prevent spam)
+    }
 
-        bool shouldExecute = false;
+    /**
+     * Pool information for AI decision
+     */
+    struct PoolInfo {
+        address poolAddress; // Uniswap V4 pool address
+        string poolName; // e.g., "USDC/USDC" or "USDC/USDT"
+        uint256 lastAPY; // Last fetched APY (basis points, e.g., 500 = 5%)
+        uint256 lastUpdateTime; // When APY was last updated
+        bool active; // Pool is available
+    }
 
-        if (upperThreshold > 0 && price > upperThreshold) {
-            shouldExecute = true;
-        } else if (lowerThreshold > 0 && price < lowerThreshold) {
-            shouldExecute = true;
-        }
+    // User policies: one policy per user
+    mapping(address => TreasuryPolicy) public userPolicies;
 
-        if (shouldExecute && actionType == 1) {
-            // Action: emit event only (can be extended for actual actions)
-            emit AgentActionExecuted(assetId, price, upperThreshold, true);
-            executed = true;
+    // Available pools for AI agent
+    mapping(uint256 => PoolInfo) public availablePools;
+    uint256 public poolCount;
+
+    /**
+     * @notice Configure treasury policy
+     * @param balanceThreshold Minimum USDC to keep (excess will be managed)
+     * @param autoMode true = AI agent decides, false = manual vault address
+     * @param vaultAddress Where to send excess if manual mode
+     * @param allowUSDCPool Allow USDC/USDC pool for AI agent
+     * @param allowUSDTPool Allow USDC/USDT pool for AI agent
+     * @param cooldownPeriod Minimum seconds between policy executions
+     */
+    function configureTreasuryPolicy(
+        uint256 balanceThreshold,
+        bool autoMode,
+        address vaultAddress,
+        bool allowUSDCPool,
+        bool allowUSDTPool,
+        uint256 cooldownPeriod
+    ) external {
+        require(balanceThreshold > 0, "Threshold must be positive");
+
+        if (!autoMode) {
+            require(vaultAddress != address(0), "Invalid vault address");
         } else {
-            emit AgentActionExecuted(assetId, price, upperThreshold, false);
-            executed = false;
-        }
-
-        return (executed, price);
-    }
-
-    /**
-     * @notice Update price cache manually (only owner)
-     * @param assetIds Array of asset identifiers to cache
-     */
-    function updatePriceCache(
-        bytes32[] calldata assetIds
-    ) external onlyOwner {
-        for (uint256 i = 0; i < assetIds.length; i++) {
-            (int256 price, uint256 timestamp) = storkOracle.getLatestPrice(
-                assetIds[i]
+            require(
+                allowUSDCPool || allowUSDTPool,
+                "Must allow at least one pool"
             );
-            _cachePrice(assetIds[i], price, timestamp);
         }
-        lastPriceUpdate = block.timestamp;
+
+        userPolicies[msg.sender] = TreasuryPolicy({
+            balanceThreshold: balanceThreshold,
+            enabled: true,
+            autoMode: autoMode,
+            vaultAddress: vaultAddress,
+            allowUSDCPool: allowUSDCPool,
+            allowUSDTPool: allowUSDTPool,
+            lastExecutionTime: 0,
+            cooldownPeriod: cooldownPeriod
+        });
+
+        emit PolicyConfigured(msg.sender, balanceThreshold, autoMode);
     }
 
     /**
-     * @notice Check if cached price is still fresh
-     * @param assetId The asset identifier
-     * @return isFresh True if cached price is within staleness threshold
+     * @notice Execute treasury policy (check and rebalance)
+     * @dev Anyone can call to trigger policy execution for a user
+     * @param user The user whose policy to execute
      */
-    function isCachedPriceFresh(
-        bytes32 assetId
-    ) external view returns (bool isFresh) {
-        uint256 cachedTimestamp = cachedPriceTimestamps[assetId];
-        if (cachedTimestamp == 0) {
-            return false;
+    function executeTreasuryPolicy(
+        address user
+    ) external nonReentrant returns (bool executed) {
+        TreasuryPolicy storage policy = userPolicies[user];
+
+        require(policy.enabled, "Policy not enabled");
+        require(
+            block.timestamp >= policy.lastExecutionTime + policy.cooldownPeriod,
+            "Cooldown not met"
+        );
+
+        uint256 currentBalance = userBalances[user];
+
+        // Check if balance exceeds threshold
+        if (currentBalance <= policy.balanceThreshold) {
+            return false; // Nothing to do
         }
-        return (block.timestamp - cachedTimestamp) <= PRICE_STALENESS_THRESHOLD;
+
+        uint256 excessAmount = currentBalance - policy.balanceThreshold;
+        require(excessAmount > 0, "No excess to manage");
+
+        address destination;
+        string memory strategyUsed;
+
+        if (policy.autoMode) {
+            // AI AGENT MODE: Oracle-based decision
+            (destination, strategyUsed) = _aiAgentDecision(
+                policy,
+                excessAmount
+            );
+        } else {
+            // MANUAL MODE: Use vault address
+            destination = policy.vaultAddress;
+            strategyUsed = "Manual Vault";
+        }
+
+        require(destination != address(0), "Invalid destination");
+
+        // Execute transfer
+        userBalances[user] -= excessAmount;
+        bool success = usdc.transfer(destination, excessAmount);
+        require(success, "Transfer failed");
+
+        policy.lastExecutionTime = block.timestamp;
+
+        emit PolicyExecuted(
+            user,
+            excessAmount,
+            destination,
+            strategyUsed,
+            block.timestamp
+        );
+
+        return true;
     }
 
     /**
-     * @notice Get cached price for an asset
-     * @param assetId The asset identifier
-     * @return price The cached price
-     * @return timestamp The timestamp of the cached price
-     * @return isValid True if cache exists and is fresh
+     * @notice AI Agent: Choose best pool based on oracle APY data
+     * @dev Internal function - compares APYs and selects highest yield
+     * @param policy User's policy configuration
+     * @param amount Amount to deploy
+     * @return destination Pool address to send funds
+     * @return strategyName Name of chosen strategy
      */
-    function getCachedPrice(
-        bytes32 assetId
-    )
-        external
-        view
-        returns (int256 price, uint256 timestamp, bool isValid)
-    {
-        return _getCachedPrice(assetId);
+    function _aiAgentDecision(
+        TreasuryPolicy storage policy,
+        uint256 amount
+    ) internal view returns (address destination, string memory strategyName) {
+        uint256 bestAPY = 0;
+        uint256 bestPoolIndex = 0;
+        bool foundPool = false;
+
+        // Iterate through available pools
+        for (uint256 i = 0; i < poolCount; i++) {
+            PoolInfo storage pool = availablePools[i];
+
+            if (!pool.active) continue;
+
+            // Check if pool is allowed by user policy
+            bool poolAllowed = false;
+            if (
+                keccak256(bytes(pool.poolName)) ==
+                keccak256(bytes("USDC/USDC")) &&
+                policy.allowUSDCPool
+            ) {
+                poolAllowed = true;
+            } else if (
+                keccak256(bytes(pool.poolName)) ==
+                keccak256(bytes("USDC/USDT")) &&
+                policy.allowUSDTPool
+            ) {
+                poolAllowed = true;
+            }
+
+            if (!poolAllowed) continue;
+
+            // Compare APY
+            if (pool.lastAPY > bestAPY) {
+                bestAPY = pool.lastAPY;
+                bestPoolIndex = i;
+                foundPool = true;
+            }
+        }
+
+        require(foundPool, "No suitable pool found");
+
+        PoolInfo storage selectedPool = availablePools[bestPoolIndex];
+        return (selectedPool.poolAddress, selectedPool.poolName);
     }
 
-    // ========== Oracle Internal Functions ==========
+    /**
+     * @notice Update pool APY using oracle data
+     * @dev Only owner can update pool information
+     * @param poolIndex Index of pool to update
+     * @param newAPY New APY in basis points (e.g., 500 = 5%)
+     */
+    function updatePoolAPY(
+        uint256 poolIndex,
+        uint256 newAPY
+    ) external onlyOwner {
+        require(poolIndex < poolCount, "Invalid pool index");
+
+        PoolInfo storage pool = availablePools[poolIndex];
+        pool.lastAPY = newAPY;
+        pool.lastUpdateTime = block.timestamp;
+
+        emit PoolAPYUpdated(poolIndex, pool.poolName, newAPY, block.timestamp);
+    }
 
     /**
-     * @notice Internal: Cache a price
+     * @notice Register a new Uniswap V4 pool
+     * @dev Only owner can add pools
+     * @param poolAddress Uniswap V4 pool address
+     * @param poolName Pool identifier (e.g., "USDC/USDC")
+     * @param initialAPY Starting APY in basis points
      */
-    function _cachePrice(
-        bytes32 assetId,
-        int256 price,
+    function registerPool(
+        address poolAddress,
+        string memory poolName,
+        uint256 initialAPY
+    ) external onlyOwner {
+        require(poolAddress != address(0), "Invalid pool address");
+
+        availablePools[poolCount] = PoolInfo({
+            poolAddress: poolAddress,
+            poolName: poolName,
+            lastAPY: initialAPY,
+            lastUpdateTime: block.timestamp,
+            active: true
+        });
+
+        emit PoolRegistered(poolCount, poolName, poolAddress);
+        poolCount++;
+    }
+
+    /**
+     * @notice Enable/disable a pool
+     * @param poolIndex Index of pool
+     * @param active True to enable, false to disable
+     */
+    function setPoolActive(uint256 poolIndex, bool active) external onlyOwner {
+        require(poolIndex < poolCount, "Invalid pool index");
+        availablePools[poolIndex].active = active;
+
+        emit PoolStatusChanged(poolIndex, active);
+    }
+
+    /**
+     * @notice Get policy details for a user
+     */
+    function getUserPolicy(
+        address user
+    ) external view returns (TreasuryPolicy memory) {
+        return userPolicies[user];
+    }
+
+    /**
+     * @notice Check if policy can be executed
+     */
+    function canExecutePolicy(
+        address user
+    ) external view returns (bool canExecute, string memory reason) {
+        TreasuryPolicy storage policy = userPolicies[user];
+
+        if (!policy.enabled) {
+            return (false, "Policy not enabled");
+        }
+
+        if (
+            block.timestamp < policy.lastExecutionTime + policy.cooldownPeriod
+        ) {
+            return (false, "Cooldown not met");
+        }
+
+        uint256 currentBalance = userBalances[user];
+        if (currentBalance <= policy.balanceThreshold) {
+            return (false, "Balance below threshold");
+        }
+
+        return (true, "Ready to execute");
+    }
+
+    /**
+     * @notice Disable policy
+     */
+    function disablePolicy() external {
+        userPolicies[msg.sender].enabled = false;
+        emit PolicyDisabled(msg.sender);
+    }
+
+    // Events
+    event PolicyConfigured(
+        address indexed user,
+        uint256 balanceThreshold,
+        bool autoMode
+    );
+
+    event PolicyExecuted(
+        address indexed user,
+        uint256 amount,
+        address indexed destination,
+        string strategy,
         uint256 timestamp
-    ) internal {
-        cachedPrices[assetId] = price;
-        cachedPriceTimestamps[assetId] = timestamp;
-        emit PriceCached(assetId, price, timestamp);
-    }
+    );
 
-    /**
-     * @notice Internal: Get cached price if valid
-     */
-    function _getCachedPrice(
-        bytes32 assetId
-    ) internal view returns (int256 price, uint256 timestamp, bool isValid) {
-        price = cachedPrices[assetId];
-        timestamp = cachedPriceTimestamps[assetId];
+    event PoolRegistered(
+        uint256 indexed poolId,
+        string poolName,
+        address poolAddress
+    );
 
-        if (timestamp == 0) {
-            return (0, 0, false);
-        }
+    event PoolAPYUpdated(
+        uint256 indexed poolId,
+        string poolName,
+        uint256 newAPY,
+        uint256 timestamp
+    );
 
-        uint256 age = block.timestamp - timestamp;
-        isValid = age <= PRICE_STALENESS_THRESHOLD;
-        return (price, timestamp, isValid);
-    }
+    event PoolStatusChanged(uint256 indexed poolId, bool active);
+
+    event PolicyDisabled(address indexed user);
 }
