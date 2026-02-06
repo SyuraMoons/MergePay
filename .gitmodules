@@ -1,3 +1,6 @@
 [submodule "smartcontract/lib/openzeppelin-contracts"]
 	path = smartcontract/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "smartcontract/lib/uniswap-hooks"]
+	path = smartcontract/lib/uniswap-hooks
+	url = https://github.com/OpenZeppelin/uniswap-hooks

@@ -20,7 +20,7 @@ export function validateCctpTransfer(
       res.status(400).json({
         success: false,
         error: 'Validation failed',
-        details: error.errors,
+        details: error.issues, // Zod v3 uses .issues
       });
       return;
     }
