@@ -36,16 +36,18 @@ function WalletReconnect() {
 // Sync Wagmi state with WalletContext
 function WalletSync({ children }: { children: ReactNode }) {
   const { address, chainId, isConnected, connector } = useAccount();
-  const { addWallet, wallets } = useWalletContext();
+  const { addWallet, wallets, setActiveWallet } = useWalletContext();
 
   useEffect(() => {
     if (isConnected && address) {
       const chain = chainId ? getChainById(chainId) : undefined;
-      const walletExists = wallets.some(w => w.id === `evm-${address}`);
+      const walletId = `evm-${address}`;
+      const walletExists = wallets.some(w => w.id === walletId);
 
       if (!walletExists) {
+        // Add new wallet with active state
         addWallet({
-          id: `evm-${address}`,
+          id: walletId,
           type: 'evm',
           address,
           chainId,
@@ -54,9 +56,15 @@ function WalletSync({ children }: { children: ReactNode }) {
           isActive: true,
           connector: connector?.id,
         });
+      } else {
+        // Update existing wallet's active state
+        const currentWallet = wallets.find(w => w.id === walletId);
+        if (currentWallet && !currentWallet.isActive) {
+          setActiveWallet(walletId);
+        }
       }
     }
-  }, [isConnected, address, chainId, connector, addWallet, wallets]);
+  }, [isConnected, address, chainId, connector, addWallet, wallets, setActiveWallet]);
 
   return <>{children}</>;
 }
@@ -69,11 +77,16 @@ export function WalletProviders({ children }: WalletProvidersProps) {
     setIsMounted(true);
   }, []);
 
+  // Don't render anything until mounted to prevent hydration mismatch
+  if (!isMounted) {
+    return null;
+  }
+
   return (
     <WagmiProvider config={wagmiConfig} reconnectOnMount={true}>
       <QueryClientProvider client={queryClient}>
         <WalletProvider>
-          {isMounted && <WalletReconnect />}
+          <WalletReconnect />
           <WalletSync>
             {children}
           </WalletSync>

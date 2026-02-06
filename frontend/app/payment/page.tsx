@@ -1,6 +1,6 @@
 'use client';
 
-import { LiFiWidgetWrapper } from '@/components/pay/LiFiWidgetWrapper';
+import { GatewayTransferForm } from '@/components/transaction/GatewayTransferForm';
 
 export default function PayPage() {
   return (
@@ -8,16 +8,19 @@ export default function PayPage() {
       {/* Page Header */}
       <div className="animate-fade-in-up">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Pay
+          Transaction
         </h1>
+        {/* <p className="text-gray-500">
+          Pay anyone, on any chain, using your aggregated Circle Gateway balance.
+        </p> */}
       </div>
 
-      {/* Widget Container */}
+      {/* Gateway Form */}
       <div
         className="flex justify-center py-6 animate-fade-in-up"
         style={{ animationDelay: '0.1s' }}
       >
-        <LiFiWidgetWrapper />
+        <GatewayTransferForm />
       </div>
     </div>
   );

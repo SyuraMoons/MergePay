@@ -19,7 +19,7 @@ export const wagmiConfig = createConfig({
         url: typeof window !== 'undefined' ? window.location.origin : 'https://mergepay.app',
         icons: ['https://mergepay.app/icon.png'],
       },
-      showQrModal: true,
+      showQrModal: false, // Disable default modal - we'll use custom QR display
     }),
   ],
   transports: {

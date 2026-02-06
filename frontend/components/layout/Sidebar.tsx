@@ -16,7 +16,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-20 min-h-screen py-8 flex flex-col items-center">
+    <aside className="w-20 h-full py-8 flex flex-col items-center bg-gradient-to-b from-[#FDF5F0] via-[#F8F4F1] to-[#EDE8E4]">
       {/* Logo */}
       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#F4673B] to-[#FF8A65] flex items-center justify-center mb-10 shadow-lg">
         <span className="text-white text-xl font-bold">M</span>
