@@ -7,7 +7,7 @@
     "cctp-transfer": "./dist/index.js"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/server.ts",
     "server": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
     "cli": "tsx src/index.ts",
@@ -31,6 +31,8 @@
     "@circle-fin/adapter-viem-v2": "^1.4.0",
     "@circle-fin/bridge-kit": "^1.5.0",
     "@circle-fin/user-controlled-wallets": "^10.1.0",
+    "@uniswap/sdk-core": "^7.10.1",
+    "@uniswap/v4-sdk": "^1.27.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
