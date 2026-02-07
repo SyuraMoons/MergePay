@@ -1,0 +1,98 @@
+feat(treasury): integrate Circle USYC for automated yield generation
+
+Replace planned Uniswap v4 cross-chain yield strategy with Circle's USYC
+(Tokenized Treasury Fund) for simpler, safer TradFi-backed yield.
+
+## What Changed
+
+### New Contracts
+- Add USYCYieldManager for USDC ↔ USYC conversions
+- Add IUSYCTeller interface (Circle's Teller contract)
+- Add IAddressBookModule interface (Circle's Address Book)
+
+### MergeTreasury Updates
+- Remove Uniswap v4 pool integration (~150 lines)
+  - Remove PoolInfo struct and pool registry
+  - Remove AI agent pool selection logic
+  - Remove allowUSDCPool/allowUSDTPool from TreasuryPolicy
+- Add USYC yield integration (~190 lines)
+  - Simplify TreasuryPolicy with useUSYC boolean
+  - Add withdrawFromUSYC() for position redemption
+  - Add claimUSYCYield() for manual yield claiming
+  - Add getUserUSYCPosition() for position tracking
+- Add Address Book allowlisting for withdrawal security
+  - Add onlyAllowedAddress modifier
+  - Add allowlist management functions
+
+### Testing
+- Add USYCYieldManager unit tests (7 tests, all passing)
+- Mock contracts for USDC, USYC, and USYCTeller
+- Test deposit, redeem, yield claiming, and access control
+- All 36 tests passing (7 new + 29 existing)
+
+### Documentation
+- Add USYC_INTEGRATION.md (comprehensive guide)
+- Add USYC_IMPLEMENTATION_SUMMARY.md (detailed changelog)
+- Add CIRCLE_USYC_INTEGRATION_COMPLETE.md (executive summary)
+- Add QUICKSTART_USYC.md (developer quick start)
+- Add DeployUSYC.s.sol (deployment scripts)
+
+## Why USYC Over Uniswap?
+
+- ✅ Single chain (Arc) vs cross-chain complexity
+- ✅ TradFi yield (US treasuries) vs DeFi risk
+- ✅ Instant redemption vs pool dependency
+- ✅ Circle-audited contracts vs custom integration
+- ✅ Lower gas costs (no bridging)
+- ✅ Simpler architecture (~315 lines vs ~500+)
+
+## Key Features
+
+1. **Automated Yield**: Threshold-based policy execution
+2. **Manual Claiming**: Users control when to claim yield
+3. **Position Tracking**: Principal and yield tracked separately
+4. **Security**: Optional Address Book allowlisting
+5. **Instant Redemption**: No lock-up periods
+
+## Architecture
+
+User deposits USDC → Policy executes when balance > threshold →
+Excess USDC converted to USYC → Earns treasury yield →
+User can claim yield or withdraw position anytime
+
+## Testing
+
+```bash
+forge test --match-contract "USYC|MergeTreasury"
+# Result: 36/36 tests passing ✅
+```
+
+## Deployment
+
+Ready for Arc Testnet deployment. See DeployUSYC.s.sol for instructions.
+
+## Breaking Changes
+
+Treasury policy configuration simplified:
+- Before: configureTreasuryPolicy(threshold, autoMode, vault, allowUSDC, allowUSDT, cooldown)
+- After: configureTreasuryPolicy(threshold, useUSYC, vault, cooldown)
+
+Existing policies will need reconfiguration.
+
+## Files Changed
+
+New:
+- smartcontract/src/USYCYieldManager.sol (263 lines)
+- smartcontract/src/interfaces/IUSYCTeller.sol (29 lines)
+- smartcontract/src/interfaces/IAddressBookModule.sol (23 lines)
+- smartcontract/test/USYCYieldManager.t.sol (267 lines)
+- smartcontract/script/DeployUSYC.s.sol (136 lines)
+- smartcontract/USYC_INTEGRATION.md
+- smartcontract/QUICKSTART_USYC.md
+- USYC_IMPLEMENTATION_SUMMARY.md
+- CIRCLE_USYC_INTEGRATION_COMPLETE.md
+
+Modified:
+- smartcontract/src/MergeTreasury.sol (+41 lines net)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>

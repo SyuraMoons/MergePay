@@ -12,6 +12,7 @@ import circleRoutes from './api/routes/circle.js';
 // Import middleware
 import { errorHandler } from './api/middleware/error-handler.js';
 import { requestLogger } from './api/middleware/logger.js';
+import { apiKeyAuth } from './api/middleware/auth.js';
 
 dotenv.config();
 
@@ -22,6 +23,9 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
+
+// Authentication (exclude health check)
+app.use('/api', apiKeyAuth);
 
 // Routes
 app.use('/api/transfer', transferRoutes);

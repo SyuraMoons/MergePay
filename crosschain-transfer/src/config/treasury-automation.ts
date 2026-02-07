@@ -9,10 +9,8 @@ export const MERGE_TREASURY_ABI = [
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'balanceThreshold', type: 'uint256' },
-      { name: 'autoMode', type: 'bool' },
+      { name: 'useUSYC', type: 'bool' },
       { name: 'vaultAddress', type: 'address' },
-      { name: 'allowUSDCPool', type: 'bool' },
-      { name: 'allowUSDTPool', type: 'bool' },
       { name: 'cooldownPeriod', type: 'uint256' },
     ],
     outputs: [],
@@ -36,10 +34,8 @@ export const MERGE_TREASURY_ABI = [
         components: [
           { name: 'balanceThreshold', type: 'uint256' },
           { name: 'enabled', type: 'bool' },
-          { name: 'autoMode', type: 'bool' },
+          { name: 'useUSYC', type: 'bool' },
           { name: 'vaultAddress', type: 'address' },
-          { name: 'allowUSDCPool', type: 'bool' },
-          { name: 'allowUSDTPool', type: 'bool' },
           { name: 'lastExecutionTime', type: 'uint256' },
           { name: 'cooldownPeriod', type: 'uint256' },
         ],

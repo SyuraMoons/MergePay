@@ -30,7 +30,6 @@ enum Command {
   PolicyStatus = 'policy-status',
   PolicyExecute = 'policy-execute',
   PolicyCheck = 'policy-check',
-  PoolsInfo = 'pools-info',
   Help = 'help',
 }
 
@@ -75,9 +74,6 @@ function parseArgs(): { command: Command; args: string[] } {
     case 'policy-check':
     case 'pcheck':
       return { command: Command.PolicyCheck, args: args.slice(1) };
-    case 'pools-info':
-    case 'pools':
-      return { command: Command.PoolsInfo, args: args.slice(1) };
     case 'help':
     case '--help':
     case '-h':
@@ -211,8 +207,7 @@ async function main(): Promise<void> {
     Command.PolicyConfigure,
     Command.PolicyStatus,
     Command.PolicyExecute,
-    Command.PolicyCheck,
-    Command.PoolsInfo
+    Command.PolicyCheck
   ].includes(command);
 
   let headerTitle = 'CCTP Cross-Chain USDC Transfer: Sepolia → Arc';
@@ -446,10 +441,8 @@ async function main(): Promise<void> {
       try {
         await orchestrator.configurePolicy({
           threshold,
-          autoMode,
+          useUSYC: autoMode,    // Map auto -> USYC Yield Aggegator
           vaultAddress,
-          allowUSDCPool: true,  // Default allow both pools in auto mode
-          allowUSDTPool: true,
           cooldownPeriod: 3600, // 1 hour default
           privateKey,
         });
@@ -495,18 +488,6 @@ async function main(): Promise<void> {
         process.exit(0);
       } catch (error) {
         console.error('\n❌ Failed to check policy:');
-        console.error(error instanceof Error ? error.message : 'Unknown error');
-        process.exit(1);
-      }
-      break;
-    }
-
-    case Command.PoolsInfo: {
-      try {
-        await orchestrator.showPoolsInfo();
-        process.exit(0);
-      } catch (error) {
-        console.error('\n❌ Failed to get pools info:');
         console.error(error instanceof Error ? error.message : 'Unknown error');
         process.exit(1);
       }

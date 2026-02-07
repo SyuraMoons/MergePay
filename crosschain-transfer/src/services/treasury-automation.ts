@@ -17,11 +17,9 @@ export class TreasuryAutomationService {
    * Configure treasury policy
    */
   async configurePolicy(params: {
-    balanceThreshold: number;     // USDC amount (e.g., 1000)
-    autoMode: boolean;             // true = AI agent, false = manual
-    vaultAddress?: Address;        // Required if autoMode = false
-    allowUSDCPool: boolean;        // Allow USDC/USDC pool
-    allowUSDTPool: boolean;        // Allow USDC/USDT pool
+    balanceThreshold: number;     // USDC amount
+    useUSYC: boolean;             // true = USYC Yield, false = manual vault
+    vaultAddress?: Address;        // Required if useUSYC = false
     cooldownPeriod: number;        // Seconds between executions
     privateKey: `0x${string}`;
   }) {
@@ -39,12 +37,8 @@ export class TreasuryAutomationService {
     });
 
     // Validate inputs
-    if (!params.autoMode && !params.vaultAddress) {
+    if (!params.useUSYC && !params.vaultAddress) {
       throw new Error('Vault address required for manual mode');
-    }
-
-    if (params.autoMode && !params.allowUSDCPool && !params.allowUSDTPool) {
-      throw new Error('Must allow at least one pool in auto mode');
     }
 
     // Convert threshold to smallest unit
@@ -56,10 +50,8 @@ export class TreasuryAutomationService {
       functionName: 'configureTreasuryPolicy',
       args: [
         thresholdInSmallestUnit,
-        params.autoMode,
+        params.useUSYC,
         params.vaultAddress || '0x0000000000000000000000000000000000000000',
-        params.allowUSDCPool,
-        params.allowUSDTPool,
         BigInt(params.cooldownPeriod),
       ],
     });
@@ -127,10 +119,8 @@ export class TreasuryAutomationService {
     return {
       balanceThreshold: Number(policy.balanceThreshold) / 1_000_000,
       enabled: policy.enabled,
-      autoMode: policy.autoMode,
+      useUSYC: policy.useUSYC,
       vaultAddress: policy.vaultAddress,
-      allowUSDCPool: policy.allowUSDCPool,
-      allowUSDTPool: policy.allowUSDTPool,
       lastExecutionTime: Number(policy.lastExecutionTime),
       cooldownPeriod: Number(policy.cooldownPeriod),
     };

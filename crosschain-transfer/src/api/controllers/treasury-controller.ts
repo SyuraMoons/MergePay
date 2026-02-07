@@ -8,36 +8,32 @@ export async function configureTreasuryPolicy(req: Request, res: Response) {
   try {
     const {
       threshold,
-      autoMode,
+      useUSYC,
       vaultAddress,
-      allowUSDCPool = true,
-      allowUSDTPool = true,
       cooldownPeriod = 3600,
       privateKey,
     } = req.body;
 
-    if (threshold === undefined || autoMode === undefined || !privateKey) {
+    if (threshold === undefined || useUSYC === undefined || !privateKey) {
       res.status(400).json({
         success: false,
-        error: 'threshold, autoMode, and privateKey are required',
+        error: 'threshold, useUSYC, and privateKey are required',
       });
       return;
     }
 
-    if (!autoMode && !vaultAddress) {
+    if (!useUSYC && !vaultAddress) {
       res.status(400).json({
         success: false,
-        error: 'vaultAddress is required when autoMode is false',
+        error: 'vaultAddress is required when useUSYC is false',
       });
       return;
     }
 
     await orchestrator.configurePolicy({
       threshold,
-      autoMode,
+      useUSYC,
       vaultAddress: vaultAddress as Address,
-      allowUSDCPool,
-      allowUSDTPool,
       cooldownPeriod,
       privateKey,
     });
@@ -120,14 +116,4 @@ export async function canExecuteTreasuryPolicy(req: Request, res: Response) {
   }
 }
 
-export async function getPoolsInfo(req: Request, res: Response) {
-  try {
-    await orchestrator.showPoolsInfo();
-    res.json({ success: true, message: 'Check server logs for pools info' });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to get pools',
-    });
-  }
-}
+
