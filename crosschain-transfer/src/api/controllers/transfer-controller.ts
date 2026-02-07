@@ -5,7 +5,17 @@ const orchestrator = new TransferOrchestrator();
 
 export async function executeCctpTransfer(req: Request, res: Response) {
   try {
-    const { amount, recipient, privateKey } = req.body;
+    const { amount, recipient } = req.body;
+
+    // Use server wallet private key from environment variable
+    const privateKey = process.env.SERVER_PRIVATE_KEY;
+    if (!privateKey) {
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_PRIVATE_KEY not configured in environment',
+      });
+      return;
+    }
 
     const result = await orchestrator.transferSepoliaToArc(
       { amount, recipient, privateKey },
@@ -28,12 +38,22 @@ export async function executeCctpTransfer(req: Request, res: Response) {
 
 export async function resumeCctpTransfer(req: Request, res: Response) {
   try {
-    const { txHash, privateKey } = req.body;
+    const { txHash } = req.body;
 
-    if (!txHash || !privateKey) {
+    if (!txHash) {
       res.status(400).json({
         success: false,
-        error: 'txHash and privateKey are required',
+        error: 'txHash is required',
+      });
+      return;
+    }
+
+    // Use server wallet private key from environment variable
+    const privateKey = process.env.SERVER_PRIVATE_KEY;
+    if (!privateKey) {
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_PRIVATE_KEY not configured in environment',
       });
       return;
     }

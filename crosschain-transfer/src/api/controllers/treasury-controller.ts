@@ -11,13 +11,12 @@ export async function configureTreasuryPolicy(req: Request, res: Response) {
       useUSYC,
       vaultAddress,
       cooldownPeriod = 3600,
-      privateKey,
     } = req.body;
 
-    if (threshold === undefined || useUSYC === undefined || !privateKey) {
+    if (threshold === undefined || useUSYC === undefined) {
       res.status(400).json({
         success: false,
-        error: 'threshold, useUSYC, and privateKey are required',
+        error: 'threshold and useUSYC are required',
       });
       return;
     }
@@ -26,6 +25,16 @@ export async function configureTreasuryPolicy(req: Request, res: Response) {
       res.status(400).json({
         success: false,
         error: 'vaultAddress is required when useUSYC is false',
+      });
+      return;
+    }
+
+    // Use server wallet private key from environment variable
+    const privateKey = process.env.SERVER_PRIVATE_KEY;
+    if (!privateKey) {
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_PRIVATE_KEY not configured in environment',
       });
       return;
     }
@@ -74,12 +83,22 @@ export async function getTreasuryPolicy(req: Request, res: Response) {
 
 export async function executeTreasuryPolicy(req: Request, res: Response) {
   try {
-    const { address, privateKey } = req.body;
+    const { address } = req.body;
 
-    if (!address || !privateKey) {
+    if (!address) {
       res.status(400).json({
         success: false,
-        error: 'address and privateKey are required',
+        error: 'address is required',
+      });
+      return;
+    }
+
+    // Use server wallet private key from environment variable
+    const privateKey = process.env.SERVER_PRIVATE_KEY;
+    if (!privateKey) {
+      res.status(500).json({
+        success: false,
+        error: 'SERVER_PRIVATE_KEY not configured in environment',
       });
       return;
     }
