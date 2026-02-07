@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/MergeTreasury.sol";
-import "../src/interfaces/IStorkOracle.sol";
+
 import "openzeppelin-contracts/token/ERC20/ERC20.sol";
 
 // Mock CCTP MessageTransmitter for testing
@@ -88,72 +88,15 @@ contract MockUSDC is ERC20 {
     }
 }
 
-// Mock Stork Oracle for testing
-contract MockStorkOracle is IStorkOracle {
-    mapping(bytes32 => int256) private prices;
-    mapping(bytes32 => uint256) private timestamps;
-
-    function setPrice(
-        bytes32 assetId,
-        int256 price,
-        uint256 timestamp
-    ) external {
-        prices[assetId] = price;
-        timestamps[assetId] = timestamp;
-    }
-
-    function getLatestPrice(
-        bytes32 assetId
-    ) external view override returns (int256 price, uint256 timestamp) {
-        price = prices[assetId];
-        timestamp = timestamps[assetId];
-    }
-
-    function getPriceAtTimestamp(
-        bytes32 assetId,
-        uint256 timestamp
-    ) external view override returns (int256 price) {
-        // For simplicity, return current price regardless of timestamp
-        return prices[assetId];
-    }
-
-    function getLatestPrices(
-        bytes32[] calldata assetIds
-    )
-        external
-        view
-        override
-        returns (int256[] memory prices_, uint256[] memory timestamps_)
-    {
-        prices_ = new int256[](assetIds.length);
-        timestamps_ = new uint256[](assetIds.length);
-        for (uint256 i = 0; i < assetIds.length; i++) {
-            prices_[i] = prices[assetIds[i]];
-            timestamps_[i] = timestamps[assetIds[i]];
-        }
-    }
-
-    function isPriceFresh(
-        bytes32 assetId,
-        uint256 maxAge
-    ) external view override returns (bool isFresh) {
-        uint256 priceTimestamp = timestamps[assetId];
-        return (block.timestamp - priceTimestamp) <= maxAge;
-    }
-}
-
 contract MergeTreasuryTest is Test {
     MergeTreasury public treasury;
     MockUSDC public usdc;
-    MockStorkOracle public oracle;
+
     MockCCTPMessageTransmitter public cctpTransmitter;
 
     address public owner = address(1);
     address public user = address(2);
     address public payer = address(3);
-
-    bytes32 constant ETH_USD = keccak256("ETH/USD");
-    bytes32 constant BTC_USD = keccak256("BTC/USD");
 
     function setUp() public {
         vm.startPrank(owner);
@@ -161,18 +104,11 @@ contract MergeTreasuryTest is Test {
         // Deploy mock USDC
         usdc = new MockUSDC();
 
-        // Deploy mock oracle
-        oracle = new MockStorkOracle();
-
         // Deploy mock CCTP MessageTransmitter
         cctpTransmitter = new MockCCTPMessageTransmitter();
 
         // Deploy treasury
-        treasury = new MergeTreasury(
-            address(usdc),
-            address(oracle),
-            address(cctpTransmitter)
-        );
+        treasury = new MergeTreasury(address(usdc), address(cctpTransmitter));
 
         // Set treasury in CCTP mock
         cctpTransmitter.setTreasury(address(treasury));
@@ -182,12 +118,6 @@ contract MergeTreasuryTest is Test {
         // Give user some USDC
         usdc.mint(user, 1000 * 10 ** 6); // 1000 USDC
         usdc.mint(payer, 500 * 10 ** 6); // 500 USDC
-
-        // Set initial prices
-        vm.startPrank(owner);
-        oracle.setPrice(ETH_USD, 3000 * 1e8, block.timestamp); // $3000
-        oracle.setPrice(BTC_USD, 50000 * 1e8, block.timestamp); // $50000
-        vm.stopPrank();
     }
 
     function test_ReceivePayment() public {
@@ -358,28 +288,6 @@ contract MergeTreasuryTest is Test {
         vm.prank(user);
         vm.expectRevert();
         treasury.emergencyWithdraw(100);
-    }
-
-    // ========== Oracle Tests ==========
-
-    function test_GetPrice_NoCache() public {
-        (int256 price, uint256 timestamp) = treasury.getPrice(ETH_USD);
-
-        assertEq(price, 3000 * 1e8);
-        assertEq(timestamp, block.timestamp);
-    }
-
-    function test_GetMultiplePrices() public {
-        bytes32[] memory assetIds = new bytes32[](2);
-        assetIds[0] = ETH_USD;
-        assetIds[1] = BTC_USD;
-
-        (int256[] memory prices, uint256[] memory timestamps) = treasury
-            .getMultiplePrices(assetIds);
-
-        assertEq(prices.length, 2);
-        assertEq(prices[0], 3000 * 1e8);
-        assertEq(prices[1], 50000 * 1e8);
     }
 
     // ========== Multi-Wallet Aggregation Tests ==========

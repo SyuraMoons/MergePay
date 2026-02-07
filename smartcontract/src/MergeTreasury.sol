@@ -4,7 +4,9 @@ pragma solidity ^0.8.20;
 import "openzeppelin-contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-contracts/access/Ownable.sol";
 import "openzeppelin-contracts/utils/ReentrancyGuard.sol";
-import "./interfaces/IStorkOracle.sol";
+
+import "./interfaces/IAddressBookModule.sol";
+import "./USYCYieldManager.sol";
 
 /**
  * @title IMessageTransmitter
@@ -44,11 +46,14 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
     // USDC token on Arc
     IERC20 public immutable usdc;
 
-    // Stork Oracle for price data
-    IStorkOracle public immutable storkOracle;
-
     // CCTP MessageTransmitter on Arc
     IMessageTransmitter public immutable cctpMessageTransmitter;
+
+    // USYC Yield Manager for earning yield on excess treasury funds
+    USYCYieldManager public usycYieldManager;
+
+    // Circle Address Book module for withdrawal allowlisting
+    IAddressBookModule public addressBook;
 
     // Track processed CCTP messages to prevent replay attacks
     mapping(uint256 sourceDomain => mapping(uint64 nonce => bool))
@@ -108,11 +113,6 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
 
     event TreasuryDeposit(address indexed from, uint256 amount);
 
-    event PriceFetched(
-        bytes32 indexed assetId,
-        int256 price,
-        uint256 timestamp
-    );
     // ========== Multi-Wallet Aggregation Events ==========
 
     event WalletRegistered(bytes32 indexed userId, address wallet);
@@ -133,19 +133,33 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         string note
     );
 
+    // ========== Modifiers ==========
+
+    /**
+     * @notice Only allow withdrawals to addresses in Address Book (if configured)
+     */
+    modifier onlyAllowedAddress(address recipient) {
+        if (address(addressBook) != address(0)) {
+            require(
+                addressBook.isAddressAllowed(recipient),
+                "Address not in allowlist"
+            );
+        }
+        _;
+    }
+
     constructor(
         address _usdc,
-        address _storkOracle,
         address _cctpMessageTransmitter
     ) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC address");
-        require(_storkOracle != address(0), "Invalid oracle address");
+
         require(
             _cctpMessageTransmitter != address(0),
             "Invalid CCTP MessageTransmitter"
         );
         usdc = IERC20(_usdc);
-        storkOracle = IStorkOracle(_storkOracle);
+
         cctpMessageTransmitter = IMessageTransmitter(_cctpMessageTransmitter);
     }
 
@@ -203,7 +217,10 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
      * @param amount Amount to withdraw
      * @param to Destination address
      */
-    function withdraw(uint256 amount, address to) external nonReentrant {
+    function withdraw(
+        uint256 amount,
+        address to
+    ) external nonReentrant onlyAllowedAddress(to) {
         require(to != address(0), "Invalid destination");
         require(amount > 0, "Amount must be greater than 0");
         require(userBalances[msg.sender] >= amount, "Insufficient balance");
@@ -229,7 +246,7 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         bytes32 userId,
         uint256 amount,
         address to
-    ) external nonReentrant {
+    ) external nonReentrant onlyAllowedAddress(to) {
         require(to != address(0), "Invalid destination");
         require(amount > 0, "Amount must be greater than 0");
         require(userIdBalances[userId] >= amount, "Insufficient balance");
@@ -448,116 +465,60 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         return userWallets[userId];
     }
 
-    // ========== Oracle Functions ==========
-
-    /**
-     * @notice Get the latest price for an asset, using cache if available
-     * @param assetId The asset identifier (e.g., keccak256("ETH/USD"))
-     * @return price The latest price
-     * @return timestamp The timestamp of the price
-     */
-    function getPrice(
-        bytes32 assetId
-    ) external returns (int256 price, uint256 timestamp) {
-        (price, timestamp) = storkOracle.getLatestPrice(assetId);
-        emit PriceFetched(assetId, price, timestamp);
-    }
-
-    /**
-     * @notice Get multiple prices in a single call
-     * @param assetIds Array of asset identifiers
-     * @return prices Array of prices
-     * @return timestamps Array of timestamps
-     */
-    function getMultiplePrices(
-        bytes32[] calldata assetIds
-    ) external returns (int256[] memory prices, uint256[] memory timestamps) {
-        prices = new int256[](assetIds.length);
-        timestamps = new uint256[](assetIds.length);
-
-        for (uint256 i = 0; i < assetIds.length; i++) {
-            (int256 price, uint256 timestamp) = this.getPrice(assetIds[i]);
-            prices[i] = price;
-            timestamps[i] = timestamp;
-        }
-    }
-
     // ========== POLICY-BASED TREASURY AUTOMATION ==========
 
     // ========== POLICY-BASED TREASURY AUTOMATION ==========
 
     /**
      * Treasury policy configuration
+     * @dev Simplified structure for USYC-only yield generation
      */
     struct TreasuryPolicy {
         uint256 balanceThreshold; // Minimum USDC to keep in treasury
         bool enabled; // Policy active/inactive
-        bool autoMode; // true = AI agent, false = manual
+        bool useUSYC; // true = use USYC for yield, false = use manual vault
         address vaultAddress; // For manual mode: where to send excess
-        bool allowUSDCPool; // Allow USDC/USDC pool
-        bool allowUSDTPool; // Allow USDC/USDT pool
         uint256 lastExecutionTime; // Track when policy last ran
         uint256 cooldownPeriod; // Minimum time between executions (prevent spam)
-    }
-
-    /**
-     * Pool information for AI decision
-     */
-    struct PoolInfo {
-        address poolAddress; // Uniswap V4 pool address
-        string poolName; // e.g., "USDC/USDC" or "USDC/USDT"
-        uint256 lastAPY; // Last fetched APY (basis points, e.g., 500 = 5%)
-        uint256 lastUpdateTime; // When APY was last updated
-        bool active; // Pool is available
     }
 
     // User policies: one policy per user
     mapping(address => TreasuryPolicy) public userPolicies;
 
-    // Available pools for AI agent
-    mapping(uint256 => PoolInfo) public availablePools;
-    uint256 public poolCount;
-
     /**
      * @notice Configure treasury policy
      * @param balanceThreshold Minimum USDC to keep (excess will be managed)
-     * @param autoMode true = AI agent decides, false = manual vault address
-     * @param vaultAddress Where to send excess if manual mode
-     * @param allowUSDCPool Allow USDC/USDC pool for AI agent
-     * @param allowUSDTPool Allow USDC/USDT pool for AI agent
+     * @param useUSYC true = use Circle USYC for yield, false = manual vault
+     * @param vaultAddress Where to send excess if not using USYC
      * @param cooldownPeriod Minimum seconds between policy executions
      */
     function configureTreasuryPolicy(
         uint256 balanceThreshold,
-        bool autoMode,
+        bool useUSYC,
         address vaultAddress,
-        bool allowUSDCPool,
-        bool allowUSDTPool,
         uint256 cooldownPeriod
     ) external {
         require(balanceThreshold > 0, "Threshold must be positive");
 
-        if (!autoMode) {
+        if (!useUSYC) {
             require(vaultAddress != address(0), "Invalid vault address");
         } else {
             require(
-                allowUSDCPool || allowUSDTPool,
-                "Must allow at least one pool"
+                address(usycYieldManager) != address(0),
+                "USYC manager not set"
             );
         }
 
         userPolicies[msg.sender] = TreasuryPolicy({
             balanceThreshold: balanceThreshold,
             enabled: true,
-            autoMode: autoMode,
+            useUSYC: useUSYC,
             vaultAddress: vaultAddress,
-            allowUSDCPool: allowUSDCPool,
-            allowUSDTPool: allowUSDTPool,
             lastExecutionTime: 0,
             cooldownPeriod: cooldownPeriod
         });
 
-        emit PolicyConfigured(msg.sender, balanceThreshold, autoMode);
+        emit PolicyConfigured(msg.sender, balanceThreshold, useUSYC);
     }
 
     /**
@@ -589,147 +550,155 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         address destination;
         string memory strategyUsed;
 
-        if (policy.autoMode) {
-            // AI AGENT MODE: Oracle-based decision
-            (destination, strategyUsed) = _aiAgentDecision(
-                policy,
-                excessAmount
+        if (policy.useUSYC) {
+            // USYC MODE: Deposit to USYC for yield
+            userBalances[user] -= excessAmount;
+
+            // Approve USDC transfer to USYCYieldManager
+            require(
+                usdc.approve(address(usycYieldManager), excessAmount),
+                "Approval failed"
             );
+
+            // Deposit to USYC
+            usycYieldManager.depositToUSYC(user, excessAmount);
+
+            policy.lastExecutionTime = block.timestamp;
+
+            emit PolicyExecuted(
+                user,
+                excessAmount,
+                address(usycYieldManager),
+                "USYC Yield",
+                block.timestamp
+            );
+
+            return true;
         } else {
             // MANUAL MODE: Use vault address
             destination = policy.vaultAddress;
             strategyUsed = "Manual Vault";
+
+            require(destination != address(0), "Invalid destination");
+
+            // Execute transfer
+            userBalances[user] -= excessAmount;
+            bool success = usdc.transfer(destination, excessAmount);
+            require(success, "Transfer failed");
+
+            policy.lastExecutionTime = block.timestamp;
+
+            emit PolicyExecuted(
+                user,
+                excessAmount,
+                destination,
+                strategyUsed,
+                block.timestamp
+            );
+
+            return true;
         }
+    }
 
-        require(destination != address(0), "Invalid destination");
+    // ========== USYC Yield Functions ==========
 
-        // Execute transfer
-        userBalances[user] -= excessAmount;
-        bool success = usdc.transfer(destination, excessAmount);
-        require(success, "Transfer failed");
-
-        policy.lastExecutionTime = block.timestamp;
-
-        emit PolicyExecuted(
-            user,
-            excessAmount,
-            destination,
-            strategyUsed,
-            block.timestamp
+    /**
+     * @notice Withdraw funds from USYC position back to user balance
+     * @dev Redeems USYC shares for USDC and adds to user balance
+     * @param usycAmount Amount of USYC shares to redeem
+     */
+    function withdrawFromUSYC(uint256 usycAmount) external nonReentrant {
+        require(usycAmount > 0, "Amount must be > 0");
+        require(
+            address(usycYieldManager) != address(0),
+            "USYC manager not set"
         );
 
-        return true;
+        // Redeem USYC to USDC via yield manager
+        uint256 usdcReceived = usycYieldManager.redeemFromUSYC(
+            msg.sender,
+            usycAmount
+        );
+
+        // Add redeemed USDC to user balance
+        userBalances[msg.sender] += usdcReceived;
+
+        emit USYCWithdrawn(
+            msg.sender,
+            usycAmount,
+            usdcReceived,
+            block.timestamp
+        );
     }
 
     /**
-     * @notice AI Agent: Choose best pool based on oracle APY data
-     * @dev Internal function - compares APYs and selects highest yield
-     * @param policy User's policy configuration
-     * @param amount Amount to deploy
-     * @return destination Pool address to send funds
-     * @return strategyName Name of chosen strategy
+     * @notice Claim accrued yield from USYC position
+     * @dev Claims yield without touching principal
      */
-    function _aiAgentDecision(
-        TreasuryPolicy storage policy,
-        uint256 amount
-    ) internal view returns (address destination, string memory strategyName) {
-        uint256 bestAPY = 0;
-        uint256 bestPoolIndex = 0;
-        bool foundPool = false;
+    function claimUSYCYield() external nonReentrant {
+        require(
+            address(usycYieldManager) != address(0),
+            "USYC manager not set"
+        );
 
-        // Iterate through available pools
-        for (uint256 i = 0; i < poolCount; i++) {
-            PoolInfo storage pool = availablePools[i];
+        // Claim yield via yield manager
+        uint256 yieldClaimed = usycYieldManager.claimYield(msg.sender);
+        require(yieldClaimed > 0, "No yield to claim");
 
-            if (!pool.active) continue;
+        // Add yield to user balance
+        userBalances[msg.sender] += yieldClaimed;
 
-            // Check if pool is allowed by user policy
-            bool poolAllowed = false;
-            if (
-                keccak256(bytes(pool.poolName)) ==
-                keccak256(bytes("USDC/USDC")) &&
-                policy.allowUSDCPool
-            ) {
-                poolAllowed = true;
-            } else if (
-                keccak256(bytes(pool.poolName)) ==
-                keccak256(bytes("USDC/USDT")) &&
-                policy.allowUSDTPool
-            ) {
-                poolAllowed = true;
-            }
+        emit USYCYieldClaimed(msg.sender, yieldClaimed, block.timestamp);
+    }
 
-            if (!poolAllowed) continue;
-
-            // Compare APY
-            if (pool.lastAPY > bestAPY) {
-                bestAPY = pool.lastAPY;
-                bestPoolIndex = i;
-                foundPool = true;
-            }
+    /**
+     * @notice Get user's USYC position details
+     * @param user User address
+     * @return principal Original USDC deposited
+     * @return usycShares Current USYC share balance
+     * @return currentValue Current USDC value
+     * @return yieldAccrued Yield earned
+     */
+    function getUserUSYCPosition(
+        address user
+    )
+        external
+        view
+        returns (
+            uint256 principal,
+            uint256 usycShares,
+            uint256 currentValue,
+            uint256 yieldAccrued
+        )
+    {
+        if (address(usycYieldManager) == address(0)) {
+            return (0, 0, 0, 0);
         }
 
-        require(foundPool, "No suitable pool found");
+        return usycYieldManager.getUserPosition(user);
+    }
 
-        PoolInfo storage selectedPool = availablePools[bestPoolIndex];
-        return (selectedPool.poolAddress, selectedPool.poolName);
+    // ========== Admin Functions ==========
+
+    /**
+     * @notice Set USYCYieldManager contract address
+     * @dev Only owner can set this
+     * @param _manager USYCYieldManager address
+     */
+    function setUSYCYieldManager(address _manager) external onlyOwner {
+        require(_manager != address(0), "Invalid manager");
+        usycYieldManager = USYCYieldManager(_manager);
+        emit USYCYieldManagerSet(_manager);
     }
 
     /**
-     * @notice Update pool APY using oracle data
-     * @dev Only owner can update pool information
-     * @param poolIndex Index of pool to update
-     * @param newAPY New APY in basis points (e.g., 500 = 5%)
+     * @notice Set Address Book module for withdrawal allowlisting
+     * @dev Only owner can set this
+     * @param _addressBook Address Book module address
      */
-    function updatePoolAPY(
-        uint256 poolIndex,
-        uint256 newAPY
-    ) external onlyOwner {
-        require(poolIndex < poolCount, "Invalid pool index");
-
-        PoolInfo storage pool = availablePools[poolIndex];
-        pool.lastAPY = newAPY;
-        pool.lastUpdateTime = block.timestamp;
-
-        emit PoolAPYUpdated(poolIndex, pool.poolName, newAPY, block.timestamp);
-    }
-
-    /**
-     * @notice Register a new Uniswap V4 pool
-     * @dev Only owner can add pools
-     * @param poolAddress Uniswap V4 pool address
-     * @param poolName Pool identifier (e.g., "USDC/USDC")
-     * @param initialAPY Starting APY in basis points
-     */
-    function registerPool(
-        address poolAddress,
-        string memory poolName,
-        uint256 initialAPY
-    ) external onlyOwner {
-        require(poolAddress != address(0), "Invalid pool address");
-
-        availablePools[poolCount] = PoolInfo({
-            poolAddress: poolAddress,
-            poolName: poolName,
-            lastAPY: initialAPY,
-            lastUpdateTime: block.timestamp,
-            active: true
-        });
-
-        emit PoolRegistered(poolCount, poolName, poolAddress);
-        poolCount++;
-    }
-
-    /**
-     * @notice Enable/disable a pool
-     * @param poolIndex Index of pool
-     * @param active True to enable, false to disable
-     */
-    function setPoolActive(uint256 poolIndex, bool active) external onlyOwner {
-        require(poolIndex < poolCount, "Invalid pool index");
-        availablePools[poolIndex].active = active;
-
-        emit PoolStatusChanged(poolIndex, active);
+    function setAddressBook(address _addressBook) external onlyOwner {
+        addressBook = IAddressBookModule(_addressBook);
+        emit AddressBookSet(_addressBook);
     }
 
     /**
@@ -775,11 +744,56 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         emit PolicyDisabled(msg.sender);
     }
 
-    // Events
+    // ========== Address Book Management ==========
+
+    /**
+     * @notice Add an address to the withdrawal allowlist
+     * @dev Only owner can manage allowlist
+     * @param _address Address to add
+     */
+    function addAllowedWithdrawalAddress(address _address) external onlyOwner {
+        require(address(addressBook) != address(0), "Address Book not set");
+        require(_address != address(0), "Invalid address");
+
+        addressBook.addAllowedAddress(_address);
+        emit AllowedAddressAdded(_address);
+    }
+
+    /**
+     * @notice Remove an address from the withdrawal allowlist
+     * @dev Only owner can manage allowlist
+     * @param _address Address to remove
+     */
+    function removeAllowedWithdrawalAddress(
+        address _address
+    ) external onlyOwner {
+        require(address(addressBook) != address(0), "Address Book not set");
+        require(_address != address(0), "Invalid address");
+
+        addressBook.removeAllowedAddress(_address);
+        emit AllowedAddressRemoved(_address);
+    }
+
+    /**
+     * @notice Check if an address is allowed for withdrawals
+     * @param _address Address to check
+     * @return allowed True if address is in allowlist or if Address Book not configured
+     */
+    function isWithdrawalAddressAllowed(
+        address _address
+    ) external view returns (bool allowed) {
+        if (address(addressBook) == address(0)) {
+            return true; // No restriction if Address Book not set
+        }
+        return addressBook.isAddressAllowed(_address);
+    }
+
+    // ========== Events ==========
+
     event PolicyConfigured(
         address indexed user,
         uint256 balanceThreshold,
-        bool autoMode
+        bool useUSYC
     );
 
     event PolicyExecuted(
@@ -790,20 +804,26 @@ contract MergeTreasury is Ownable, ReentrancyGuard {
         uint256 timestamp
     );
 
-    event PoolRegistered(
-        uint256 indexed poolId,
-        string poolName,
-        address poolAddress
-    );
+    event PolicyDisabled(address indexed user);
 
-    event PoolAPYUpdated(
-        uint256 indexed poolId,
-        string poolName,
-        uint256 newAPY,
+    event USYCWithdrawn(
+        address indexed user,
+        uint256 usycAmount,
+        uint256 usdcReceived,
         uint256 timestamp
     );
 
-    event PoolStatusChanged(uint256 indexed poolId, bool active);
+    event USYCYieldClaimed(
+        address indexed user,
+        uint256 yieldAmount,
+        uint256 timestamp
+    );
 
-    event PolicyDisabled(address indexed user);
+    event USYCYieldManagerSet(address indexed manager);
+
+    event AddressBookSet(address indexed addressBook);
+
+    event AllowedAddressAdded(address indexed allowedAddress);
+
+    event AllowedAddressRemoved(address indexed allowedAddress);
 }
