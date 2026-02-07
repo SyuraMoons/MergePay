@@ -25,6 +25,7 @@ export interface WalletContextActions {
   removeWallet: (walletId: string) => void;
   setActiveWallet: (walletId: string) => void;
   clearError: () => void;
+  disconnectAll: () => void;
 }
 
 export type WalletContextType = WalletContextState & WalletContextActions;

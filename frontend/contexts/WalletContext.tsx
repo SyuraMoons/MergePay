@@ -65,6 +65,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setError(null);
   }, []);
 
+  const disconnectAll = useCallback(() => {
+    setWallets([]);
+    setError(null);
+  }, []);
+
   const value: WalletContextType = useMemo(() => ({
     wallets,
     activeWallet,
@@ -74,7 +79,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     removeWallet,
     setActiveWallet,
     clearError,
-  }), [wallets, activeWallet, isConnecting, error, addWallet, removeWallet, setActiveWallet, clearError]);
+    disconnectAll,
+  }), [wallets, activeWallet, isConnecting, error, addWallet, removeWallet, setActiveWallet, clearError, disconnectAll]);
 
   return (
     <WalletContext.Provider value={value}>

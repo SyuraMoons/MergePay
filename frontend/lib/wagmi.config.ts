@@ -1,4 +1,4 @@
-import { http, createConfig, createStorage, cookieStorage } from 'wagmi';
+import { http, createConfig } from 'wagmi';
 import { base, baseSepolia, arbitrum, arbitrumSepolia, optimism, optimismSepolia, polygon, polygonAmoy } from 'wagmi/chains';
 import { injected, walletConnect } from 'wagmi/connectors';
 
@@ -9,7 +9,7 @@ export const wagmiConfig = createConfig({
   chains: [base, baseSepolia, arbitrum, arbitrumSepolia, optimism, optimismSepolia, polygon, polygonAmoy],
   connectors: [
     injected({
-      shimDisconnect: true,
+      shimDisconnect: false, // Changed to false - prevents connection issues
     }),
     walletConnect({
       projectId: WALLETCONNECT_PROJECT_ID,
@@ -33,10 +33,8 @@ export const wagmiConfig = createConfig({
     [polygonAmoy.id]: http(),
   },
   ssr: true,
-  // Persist wallet connection in cookies (SSR compatible)
-  storage: createStorage({
-    storage: cookieStorage,
-  }),
+  // Use default localStorage storage (more reliable for client-side)
+  // Storage will be localStorage in browser, skipped during SSR
 });
 
 // Export chain configurations for easy access

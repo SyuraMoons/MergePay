@@ -2,10 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useWalletContext } from '@/contexts/WalletContext';
+import { useDisconnect } from 'wagmi';
+import { useState } from 'react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: DashboardIcon },
-  { href: '/payment', label: 'Payment', icon: PayIcon },
+  { href: '/transaction', label: 'Transaction', icon: PayIcon },
   { href: '/policies', label: 'Policies', icon: PolicyIcon },
   { href: '/dashboard/history', label: 'History', icon: HistoryIcon },
   { href: '/dashboard/wallets', label: 'Wallets', icon: WalletIcon },
@@ -14,6 +17,24 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { activeWallet, disconnectAll } = useWalletContext();
+  const { disconnect } = useDisconnect();
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleDisconnect = () => {
+    // Show confirmation dialog
+    setShowConfirm(true);
+  };
+
+  const confirmDisconnect = () => {
+    // Disconnect wagmi wallet
+    disconnect();
+
+    // Clear all wallets from context
+    disconnectAll();
+
+    setShowConfirm(false);
+  };
 
   return (
     <aside className="w-20 h-full py-8 flex flex-col items-center bg-gradient-to-b from-[#FDF5F0] via-[#F8F4F1] to-[#EDE8E4]">
@@ -46,14 +67,40 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom section */}
-      <button
-        className="w-12 h-12 flex items-center justify-center rounded-2xl hover:bg-white/60 transition-colors"
-        onClick={() => console.log('Disconnect wallet')}
-        title="Disconnect"
-      >
-        <LogoutIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-      </button>
+      {/* Bottom section - Disconnect button */}
+      {activeWallet && (
+        <button
+          className="w-12 h-12 flex items-center justify-center rounded-2xl hover:bg-red-100 transition-colors group"
+          onClick={handleDisconnect}
+          title="Disconnect all wallets"
+        >
+          <LogoutIcon className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
+        </button>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Disconnect Wallets?</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to disconnect all wallets? You'll need to reconnect them to use the app.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDisconnect}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -111,6 +158,19 @@ function PolicyIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function VaultIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M7 5V3" />
+      <path d="M17 5V3" />
+      <path d="M7 19v2" />
+      <path d="M17 19v2" />
     </svg>
   );
 }
