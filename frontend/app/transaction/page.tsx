@@ -21,20 +21,7 @@ export default function TransactionPage() {
         <div className="lg:col-span-1 space-y-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <UnifiedBalanceOverview />
 
-          {/* Quick Tip Card */}
-          <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
-                <span className="text-xl">💡</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-blue-900 text-sm mb-1">Did you know?</h3>
-                <p className="text-xs text-blue-700 leading-relaxed">
-                  All your USDC across supported chains is treated as a single unified balance. You can pay anyone on any chain without bridging first.
-                </p>
-              </div>
-            </div>
-          </div>
+
         </div>
 
         {/* Right Column: Transfer Form */}

@@ -45,7 +45,7 @@ export function TotalBalanceCard({
   }, [totalBalance]);
 
   return (
-    <div className="glass-card p-6 animate-fade-in-up">
+    <div className="glass-card p-6 animate-fade-in-up h-full flex flex-col justify-between">
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">

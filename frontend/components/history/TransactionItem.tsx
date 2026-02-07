@@ -1,17 +1,6 @@
 'use client';
 
-interface TransactionItemProps {
-  type: 'send' | 'receive' | 'bridge';
-  from: string;
-  to: string;
-  amount: string;
-  token: string;
-  chain: string;
-  chainId: number;
-  status: 'pending' | 'completed' | 'failed';
-  timestamp: Date;
-  hash?: string;
-}
+import { Transaction } from '@/types/transaction';
 
 export function TransactionItem({
   type,
@@ -23,7 +12,7 @@ export function TransactionItem({
   status,
   timestamp,
   hash,
-}: TransactionItemProps) {
+}: Transaction) {
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };

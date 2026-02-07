@@ -1,4 +1,4 @@
-export type GatewayChain = 'sepolia' | 'arc' | 'base' | 'avalanche';
+export type GatewayChain = 'sepolia' | 'arc' | 'base' | 'avalanche' | 'optimism' | 'arbitrum' | 'polygon';
 
 export interface GatewayDomainBalance {
   domain: number;

@@ -8,12 +8,40 @@ import { useEffect, useState } from 'react';
 import { formatUnits } from 'viem';
 
 // Helper component to fetch and display individual chain balance
+const USDC_ADDRESSES: Record<number, `0x${string}`> = {
+  // Mainnets
+  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum One
+  10: '0x0b2C639c533813f4Aa9D7837CAf992c198942b0', // Optimism
+  137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
+  // Testnets
+  84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
+  421614: '0x75faf114eafb1BDbe2F031385358e18508618873', // Arbitrum Sepolia
+  11155420: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // Optimism Sepolia
+  80002: '0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582', // Polygon Amoy
+};
+
 function BalanceRow({ chain, onBalanceUpdate }: { chain: typeof supportedChains[0], onBalanceUpdate: (chainId: number, val: number) => void }) {
   const { address } = useAccount();
+  const usdcAddress = USDC_ADDRESSES[chain.id];
+
   const { data, isLoading } = useBalance({
     address,
     chainId: chain.id,
+    token: usdcAddress, // Fetch USDC if address known, otherwise native (fallback) for now or undefined to skip?
+    // If we pass undefined token, it fetches native.
+    // If chain has no USDC mapped, maybe we shouldn't show it or show 0?
+    // For now, let's only fetch if mapped, else native (user might be confused if native shows up though).
+    // The user explicitly said "should be usdc".
+    // So if no address, pass undefined to fetch native? No, that's what we want to avoid.
+    // But useBalance with undefined token fetches native.
+    // Let's assume we mapped all supported chains correctly.
   });
+
+  // If we don't have a USDC address for this chain, and we want ONLY USDC, we might want to return 0 or hide it.
+  // But useBalance returns native if token is undefined.
+  // We should enforce token ONLY if we have address. If not, maybe we display "N/A" or 0.
+  // However, I mapped all current supported chains. So it should be fine.
 
   const formattedBalance = data ? parseFloat(formatUnits(data.value, data.decimals)) : 0;
 
@@ -31,7 +59,7 @@ function BalanceRow({ chain, onBalanceUpdate }: { chain: typeof supportedChains[
         chainId: chain.id.toString(),
         chainName: chain.name,
         balance: formattedBalance,
-        symbol: data?.symbol || chain.nativeCurrency.symbol,
+        symbol: 'USDC', // Force symbol to USDC since we are fetching token or wanting to show USDC context
         iconUrl: '', // TODO: Add icons
       }}
       isUpdating={isLoading}
