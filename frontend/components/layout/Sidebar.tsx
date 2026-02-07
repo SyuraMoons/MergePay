@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useWalletContext } from '@/contexts/WalletContext';
 import { useDisconnect } from 'wagmi';
 import { useState } from 'react';
+import { Logo } from '@/components/ui/Logo';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: DashboardIcon },
@@ -39,9 +40,9 @@ export function Sidebar() {
   return (
     <aside className="w-20 h-full py-8 flex flex-col items-center bg-gradient-to-b from-[#FDF5F0] via-[#F8F4F1] to-[#EDE8E4]">
       {/* Logo */}
-      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#F4673B] to-[#FF8A65] flex items-center justify-center mb-10 shadow-lg">
-        <span className="text-white text-xl font-bold">M</span>
-      </div>
+      <Link href="/dashboard" className="mb-10 hover:scale-105 transition-transform">
+        <Logo className="w-12 h-12 shadow-lg rounded-2xl" />
+      </Link>
 
       {/* Navigation */}
       <nav className="flex flex-col items-center gap-2 flex-1">
