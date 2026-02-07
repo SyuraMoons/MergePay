@@ -1,14 +1,17 @@
 'use client';
 
 import { TotalBalanceCard } from '@/components/dashboard/TotalBalanceCard';
-import { BalanceBreakdown } from '@/components/dashboard/BalanceBreakdown';
 import { ChainIconsRow } from '@/components/dashboard/ChainIconsRow';
-import { SummaryCard } from '@/components/dashboard/SummaryCard';
-import { AIAgentCard } from '@/components/dashboard/AIAgentCard';
 import { useBalanceWebSocket } from '@/hooks/useBalanceWebSocket';
+import { VaultSummary } from '@/components/dashboard/VaultSummary';
+import { TransactionItem } from '@/components/history/TransactionItem';
+import { AIAgentCard } from '@/components/dashboard/AIAgentCard';
+import { MOCK_TRANSACTIONS } from '@/services/mockData';
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const { balances, isConnected, error } = useBalanceWebSocket(undefined, true);
+  const recentTransactions = MOCK_TRANSACTIONS.slice(0, 5);
 
   if (error) {
     return (
@@ -27,10 +30,7 @@ export default function DashboardPage() {
   if (balances.isLoading) {
     return (
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-8 glass-card p-8 animate-pulse">
-          <div className="h-40 bg-gray-200/50 rounded-2xl"></div>
-        </div>
-        <div className="col-span-4 glass-card p-6 animate-pulse">
+        <div className="col-span-12 lg:col-span-8 glass-card p-8 animate-pulse">
           <div className="h-40 bg-gray-200/50 rounded-2xl"></div>
         </div>
       </div>
@@ -38,11 +38,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-12 gap-5">
-        {/* Left Column - Balance Card */}
-        <div className="col-span-12 lg:col-span-7">
+    <div className="space-y-6">
+      {/* Top Row: Balance, Vault, AI Agent */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* Total Balance (Wide) */}
+        <div className="xl:col-span-5 flex flex-col">
           <TotalBalanceCard
             totalBalance={balances.totalBalance}
             targetBalance={100}
@@ -51,73 +51,62 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Right Column - AI Agent */}
-        <div className="col-span-12 lg:col-span-5">
+        {/* Vault Summary (Medium) */}
+        <div className="xl:col-span-4 flex flex-col">
+          <VaultSummary />
+        </div>
+
+        {/* AI Chatbot (Narrow) */}
+        <div className="xl:col-span-3 flex flex-col">
           <AIAgentCard />
         </div>
       </div>
 
-      {/* Chain Icons Row - Compact */}
-      <div className="glass-card px-5 py-3 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-500">Networks</span>
-          <ChainIconsRow
-            chains={balances.chains}
-            onChainClick={(chainId) => console.log('Clicked:', chainId)}
-          />
-        </div>
-      </div>
-
-      {/* Two Column Layout */}
-      <div className="grid grid-cols-12 gap-5">
-        {/* Left - Summary Breakdown */}
-        <div className="col-span-12 lg:col-span-7">
-          <BalanceBreakdown
-            chains={balances.chains}
-            isUpdating={isConnected}
-          />
-        </div>
-
-        {/* Right - Summary Cards */}
-        <div className="col-span-12 lg:col-span-5 space-y-4">
-          <SummaryCard
-            title="Total Balance"
-            value={`$${balances.totalBalance.toFixed(2)}`}
-            subtitle="USDC"
-            icon
-            trend="up"
-            trendValue="+2.5%"
-          />
-          <SummaryCard
-            title="Last 7 Days"
-            value="+$8.50"
-            variant="chart"
-          />
-        </div>
-      </div>
-
-      {/* Recent Activity - Cleaner */}
-      <div className="glass-card p-5 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-gray-900">Recent Activity</h3>
-          <button className="text-sm text-[#F4673B] hover:text-[#E55A30] font-medium">
-            View All
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {/* Empty state */}
-          <div className="flex items-center gap-4 py-3 px-4 rounded-xl bg-gray-50/50">
-            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      {/* Middle Row: Networks Available */}
+      <div className="glass-card px-6 py-4 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-600">No transactions yet</p>
-              <p className="text-xs text-gray-400">Your activity will appear here</p>
-            </div>
+            <span className="text-sm font-semibold text-gray-700">Networks Available</span>
           </div>
+          <div className="flex-1 overflow-x-auto">
+            <ChainIconsRow
+              chains={balances.chains}
+              onChainClick={(chainId) => console.log('Clicked:', chainId)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row: Transaction Summary */}
+      <div className="glass-card p-6 animate-fade-in-up space-y-4" style={{ animationDelay: '0.3s' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-[#F4673B]/10 rounded-lg">
+              <svg className="w-5 h-5 text-[#F4673B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Recent Transactions</h3>
+          </div>
+          <Link href="/dashboard/history" className="text-sm font-medium text-[#F4673B] hover:text-[#E55A30] transition-colors flex items-center gap-1">
+            View History
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+
+        <div className="grid gap-3">
+          {recentTransactions.length > 0 ? recentTransactions.map((tx) => (
+            <TransactionItem key={tx.id} {...tx} />
+          )) : (
+            <p className="text-gray-500 text-center py-4">No recent transactions</p>
+          )}
         </div>
       </div>
     </div>

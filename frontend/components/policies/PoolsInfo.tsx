@@ -97,7 +97,7 @@ export function PoolsInfo() {
                   <div className="flex items-center gap-2 mb-2">
                     <h4 className="font-semibold text-gray-900">{pool.poolName}</h4>
                     {pool.active ? (
-                      <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                      <span className="px-2 py-0.5 text-xs font-medium bg-orange-50 text-[#F4673B] rounded-full border border-orange-100">
                         Active
                       </span>
                     ) : (

@@ -3,20 +3,33 @@
 import { useWalletContext } from '@/contexts/WalletContext';
 import { useEvmWallet } from '@/hooks/useEvmWallet';
 import { useCircleWallet } from '@/hooks/useCircleWallet';
+import { useDisconnect } from 'wagmi';
 
-export function WalletManager() {
-  const { wallets, activeWallet, setActiveWallet, removeWallet } = useWalletContext();
+interface WalletManagerProps {
+  onSwitchToConnectTab?: () => void;
+}
+
+export function WalletManager({ onSwitchToConnectTab }: WalletManagerProps) {
+  const { wallets, activeWallet, setActiveWallet, removeWallet, disconnectAll } = useWalletContext();
   const { disconnect: evmDisconnect } = useEvmWallet();
   const { disconnect: circleDisconnect } = useCircleWallet();
+  const { disconnect: wagmiDisconnect } = useDisconnect();
 
   const handleRemoveWallet = (walletId: string, walletType: string) => {
+    // Remove from context first
+    removeWallet(walletId);
+
     // Disconnect based on wallet type
     if (walletType === 'evm') {
       evmDisconnect();
     } else if (walletType === 'circle') {
       circleDisconnect();
     }
-    removeWallet(walletId);
+
+    // If no wallets left, disconnect wagmi completely
+    if (wallets.length <= 1) {
+      wagmiDisconnect();
+    }
   };
 
   const truncateAddress = (address: string) => {
@@ -57,6 +70,14 @@ export function WalletManager() {
         </div>
         <p className="text-gray-600 font-medium">No wallets connected</p>
         <p className="text-gray-400 text-sm mt-1">Connect a wallet to get started</p>
+        {onSwitchToConnectTab && (
+          <button
+            onClick={onSwitchToConnectTab}
+            className="mt-4 px-6 py-2 bg-[#F4673B] text-white rounded-xl font-medium text-sm hover:shadow-lg hover:shadow-[#F4673B]/25 transition-all"
+          >
+            Connect Wallet
+          </button>
+        )}
       </div>
     );
   }
@@ -121,6 +142,18 @@ export function WalletManager() {
           </div>
         </div>
       ))}
+
+      {wallets.length > 0 && onSwitchToConnectTab && (
+        <button
+          onClick={onSwitchToConnectTab}
+          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 font-medium text-sm hover:border-[#F4673B] hover:text-[#F4673B] transition-all flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Connect Another Wallet
+        </button>
+      )}
 
       <p className="text-xs text-gray-400 text-center pt-2">
         Click the checkmark to set a wallet as active for transactions
