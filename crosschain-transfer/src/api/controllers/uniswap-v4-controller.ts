@@ -132,7 +132,7 @@ export async function getPosition(req: Request, res: Response) {
     try {
         const service = new UniswapV4AgentService();
 
-        const { owner, poolId, tickLower, tickUpper } = req.params;
+        const { owner, poolId, tickLower, tickUpper } = req.params as { owner: string; poolId: string; tickLower: string; tickUpper: string };
 
         const position = await service.getPosition(
             owner as `0x${string}`,

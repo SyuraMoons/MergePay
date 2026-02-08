@@ -171,7 +171,7 @@ export class UniswapV4AgentService {
             throw new Error('Wallet client not initialized. Private key required.');
         }
 
-        const { request } = await this.publicClient.simulateContract({
+        const { request, result } = await this.publicClient.simulateContract({
             address: this.contractAddress,
             abi: UNISWAP_V4_AGENT_ABI,
             functionName: 'swap',
@@ -191,33 +191,7 @@ export class UniswapV4AgentService {
         });
 
         const hash = await this.walletClient.writeContract(request);
-
-        // In a real app we'd parse logs to get actual deltas, but for now we'll wait for receipt 
-        // and rely on simulation values if needed, or just return hash.
-        // The contract function returns values, which are accessible via simulation results (result)
-        // but the transaction write returns a hash.
-
-        // We can get the simulation return value here:
-        // @ts-ignore
-        const [delta0, delta1] = await this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: UNISWAP_V4_AGENT_ABI,
-            functionName: 'swap',
-            args: [
-                {
-                    currency0: params.poolKey.currency0 as Address,
-                    currency1: params.poolKey.currency1 as Address,
-                    fee: params.poolKey.fee,
-                    tickSpacing: params.poolKey.tickSpacing,
-                    hooks: params.poolKey.hooks as Address
-                },
-                params.zeroForOne,
-                params.amountSpecified,
-                params.sqrtPriceLimitX96,
-            ],
-            account: this.walletClient.account, // use account to simulate with correct context if needed
-        }).catch(() => [0n, 0n]); // Fallback if simulation fails (e.g. view call limitation on state changing func) which often happens with write functions.
-        // Actually, `readContract` on a non-view function performs a static call (eth_call) which simulates it.
+        const [delta0, delta1] = result;
 
         return {
             delta0: delta0,
