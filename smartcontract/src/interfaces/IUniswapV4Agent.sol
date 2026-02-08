@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {PoolKey} from "../../lib/uniswap-hooks/lib/v4-core/src/types/PoolKey.sol";
+import {
+    PoolKey
+} from "../../lib/uniswap-hooks/lib/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "../../lib/uniswap-hooks/lib/v4-core/src/types/PoolId.sol";
 
 /**
@@ -146,4 +148,20 @@ interface IUniswapV4Agent {
         uint256 amount0,
         uint256 amount1
     );
+
+    /**
+     * @notice Swap tokens on a pool
+     * @param poolKey The pool key
+     * @param zeroForOne If true, swap token0 for token1
+     * @param amountSpecified The amount of the swap
+     * @param sqrtPriceLimitX96 The price limit for the swap
+     * @return amount0 The amount of token0 delta
+     * @return amount1 The amount of token1 delta
+     */
+    function swap(
+        PoolKey calldata poolKey,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96
+    ) external returns (int256 amount0, int256 amount1);
 }
