@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 interface Message {
   type: 'user' | 'agent';
@@ -10,17 +11,70 @@ interface Message {
 }
 
 import { AIAgentIcon } from '@/components/ui/icons/DashboardIcons';
+import { mockBalances, calculateTotalBalance } from '@/lib/mockData';
 
 interface AIAgentCardProps {
   isConnected?: boolean;
 }
 
+
+
 export function AIAgentCard({ isConnected = true }: AIAgentCardProps) {
-  const [messages] = useState<Message[]>([
-    { type: 'user', text: 'My balance?', timestamp: '2m' },
-    { type: 'agent', text: '$65.00 USDC', timestamp: 'Now' },
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([
+    { type: 'agent', text: 'Hello! I am your Treasury AI. How can I assist you today?', timestamp: 'Now' },
   ]);
   const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    const userMsg = input.trim();
+    setInput('');
+
+    // Add user message
+    setMessages(prev => [...prev, { type: 'user', text: userMsg, timestamp: 'Now' }]);
+    setIsTyping(true);
+
+    // Process command
+    setTimeout(() => {
+      let responseText = "I'm sorry, I didn't understand that command. Try asking about 'balance', 'yield', or 'transfers'.";
+      const lowerInput = userMsg.toLowerCase();
+
+      if (lowerInput.includes('balance') || lowerInput.includes('saldo')) {
+        const total = calculateTotalBalance(mockBalances);
+        const networks = mockBalances.map(c => c.chainName).join(', ');
+        responseText = `Your current unified balance is **$${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC** across ${mockBalances.length} networks (${networks}).`;
+      }
+      else if (lowerInput.includes('transfer') || lowerInput.includes('kirim') || lowerInput.includes('send') || lowerInput.includes('pay')) {
+        responseText = "Navigating to Transaction Center. You can execute gas-abstracted transfers there.";
+        router.push('/transaction');
+      }
+      else if (lowerInput.includes('yield') || lowerInput.includes('policy') || lowerInput.includes('earn') || lowerInput.includes('invest')) {
+        responseText = "You are currently earning **~5% APY** via Circle USYC. I can help you adjust your treasury thresholds in the Policies page.";
+        // Optional: navigating to policies could be added here if desired, but sticking to info for now.
+      }
+      else if (lowerInput.includes('history') || lowerInput.includes('transaction') || lowerInput.includes('last')) {
+        responseText = "Your last transaction was a **$500 USDC** transfer to *0x71C...9A23* on Base. Status: **Confirmed**.";
+      }
+      else if (lowerInput.includes('help') || lowerInput.includes('menu')) {
+        responseText = "I can help with:\n1. Check **Balance**\n2. **Transfer** funds\n3. Check **Yield** status\n4. View **History**";
+      }
+      else if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
+        responseText = "Hello! I'm ready to manage your cross-chain treasury. What would you like to do?";
+      }
+
+      setMessages(prev => [...prev, { type: 'agent', text: responseText, timestamp: 'Now' }]);
+      setIsTyping(false);
+    }, 1000);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSend();
+    }
+  };
 
   return (
     <div className="glass-card p-5 animate-fade-in-up h-full flex flex-col justify-between relative overflow-hidden group border-t-4 border-t-[#F4673B] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" style={{ animationDelay: '0.05s' }}>
@@ -79,6 +133,15 @@ export function AIAgentCard({ isConnected = true }: AIAgentCardProps) {
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-gray-50 px-3 py-2 rounded-2xl rounded-bl-sm border border-gray-100 flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Input */}
@@ -87,10 +150,14 @@ export function AIAgentCard({ isConnected = true }: AIAgentCardProps) {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Ask AI..."
               className="w-full px-4 py-2.5 pr-10 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F4673B]/20 transition-all"
             />
-            <button className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-[#F4673B] rounded-lg flex items-center justify-center hover:bg-[#E55A30] transition-colors shadow-sm">
+            <button
+              onClick={handleSend}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-[#F4673B] rounded-lg flex items-center justify-center hover:bg-[#E55A30] transition-colors shadow-sm"
+            >
               <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
               </svg>

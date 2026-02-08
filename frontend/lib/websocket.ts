@@ -36,22 +36,22 @@ export class WebSocketService {
       this.notifyListeners(initialState);
     }, 500);
 
-    // Simulate balance updates every 10 seconds
-    this.mockInterval = setInterval(() => {
-      const updatedChains = mockBalances.map((chain) => ({
-        ...chain,
-        balance: chain.balance + (Math.random() - 0.5) * 2, // Random change ±1
-      }));
+    // Simulate balance updates every 10 seconds - DISABLED for demo stability
+    // this.mockInterval = setInterval(() => {
+    //   const updatedChains = mockBalances.map((chain) => ({
+    //     ...chain,
+    //     balance: chain.balance + (Math.random() - 0.5) * 2, // Random change ±1
+    //   }));
 
-      const updatedState: BalanceState = {
-        totalBalance: calculateTotalBalance(updatedChains),
-        chains: updatedChains,
-        lastUpdated: new Date(),
-        isLoading: false,
-      };
+    //   const updatedState: BalanceState = {
+    //     totalBalance: calculateTotalBalance(updatedChains),
+    //     chains: updatedChains,
+    //     lastUpdated: new Date(),
+    //     isLoading: false,
+    //   };
 
-      this.notifyListeners(updatedState);
-    }, 10000);
+    //   this.notifyListeners(updatedState);
+    // }, 10000);
   }
 
   private connect(url: string) {

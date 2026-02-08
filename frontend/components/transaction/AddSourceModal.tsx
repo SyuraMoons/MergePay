@@ -12,42 +12,21 @@ interface SourceChain {
   gatewayKey: GatewayChain;
 }
 
-interface WalletGroup {
+export interface WalletGroup {
   id: string;
   name: string;
   type: 'eoa' | 'smart';
   chains: SourceChain[];
 }
 
-// Mock Data simulating aggregated wallet view
-const MOCK_WALLETS: WalletGroup[] = [
-  {
-    id: 'w1',
-    name: 'Main Wallet (MetaMask)',
-    type: 'eoa',
-    chains: [
-      { chainId: 84532, name: 'Base Sepolia', iconColor: 'bg-blue-500', balance: 1000, gatewayKey: 'base' },
-      { chainId: 421614, name: 'Arbitrum Sepolia', iconColor: 'bg-indigo-500', balance: 500, gatewayKey: 'arbitrum' },
-      { chainId: 11155420, name: 'Optimism Sepolia', iconColor: 'bg-red-500', balance: 250, gatewayKey: 'optimism' },
-    ]
-  },
-  {
-    id: 'w2',
-    name: 'Smart Account (Coinbase)',
-    type: 'smart',
-    chains: [
-      { chainId: 84532, name: 'Base Sepolia', iconColor: 'bg-blue-500', balance: 2000, gatewayKey: 'base' },
-    ]
-  }
-];
-
 interface AddSourceModalProps {
   onClose: () => void;
   onAdd: (selected: { walletId: string, chainId: number, name: string, balance: number, color: string }[]) => void;
   currentSelection: string[]; // array of composite keys "walletId:chainId"
+  availableWallets: WalletGroup[];
 }
 
-export function AddSourceModal({ onClose, onAdd, currentSelection }: AddSourceModalProps) {
+export function AddSourceModal({ onClose, onAdd, currentSelection, availableWallets }: AddSourceModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set(currentSelection));
   const [mounted, setMounted] = useState(false);
 
@@ -68,7 +47,7 @@ export function AddSourceModal({ onClose, onAdd, currentSelection }: AddSourceMo
 
   const handleConfirm = () => {
     const result: any[] = [];
-    MOCK_WALLETS.forEach(w => {
+    availableWallets.forEach(w => {
       w.chains.forEach(c => {
         const key = `${w.id}:${c.chainId}`;
         if (selected.has(key)) {
@@ -108,7 +87,7 @@ export function AddSourceModal({ onClose, onAdd, currentSelection }: AddSourceMo
 
         {/* Content */}
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
-          {MOCK_WALLETS.map(wallet => (
+          {availableWallets.map(wallet => (
             <div key={wallet.id} className="space-y-3">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 sticky top-0 bg-white/95 backdrop-blur py-1 z-10">
                 {wallet.type === 'smart' ? '🤖' : '🦊'} {wallet.name}
@@ -121,8 +100,8 @@ export function AddSourceModal({ onClose, onAdd, currentSelection }: AddSourceMo
                     <label
                       key={key}
                       className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all group hover:shadow-md ${isChecked
-                          ? 'bg-orange-50 border-[#F4673B] shadow-sm'
-                          : 'bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50'
+                        ? 'bg-orange-50 border-[#F4673B] shadow-sm'
+                        : 'bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                     >
                       <div className="flex items-center gap-3">
@@ -134,8 +113,8 @@ export function AddSourceModal({ onClose, onAdd, currentSelection }: AddSourceMo
                             className="peer sr-only"
                           />
                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${isChecked
-                              ? 'bg-[#F4673B] border-[#F4673B]'
-                              : 'border-gray-300 group-hover:border-gray-400 bg-white'
+                            ? 'bg-[#F4673B] border-[#F4673B]'
+                            : 'border-gray-300 group-hover:border-gray-400 bg-white'
                             }`}>
                             {isChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7" /></svg>}
                           </div>

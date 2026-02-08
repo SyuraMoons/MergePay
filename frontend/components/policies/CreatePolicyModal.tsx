@@ -69,6 +69,14 @@ export function CreatePolicyModal({ existingPolicy, onClose, onSuccess }: Create
         cooldownPeriod: formData.cooldownPeriod * 3600,
       };
 
+      // Mock Persistence for Demo
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('demo_policy_active', 'true');
+        sessionStorage.setItem('demo_policy_data', JSON.stringify(newPolicy));
+        // Force a storage event for other components to pick up
+        window.dispatchEvent(new Event('storage'));
+      }
+
       onSuccess(newPolicy);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to configure policy');

@@ -26,14 +26,27 @@ export function VaultSummary() {
         } catch (e) {
           console.warn('Backend policy fetch failed, using mock data for demo', e);
           // Fallback mock data
-          setPolicy({
-            balanceThreshold: 1000,
-            enabled: true,
-            useUSYC: true,
-            vaultAddress: '',
-            lastExecutionTime: Date.now() / 1000 - 3600,
-            cooldownPeriod: 24 * 3600
-          });
+          // Fallback mock data with sessionStorage check for Demo persistence
+          if (typeof window !== 'undefined') {
+            const stored = sessionStorage.getItem('demo_policy_active');
+            const storedData = sessionStorage.getItem('demo_policy_data');
+
+            if (stored === 'true' && storedData) {
+              setPolicy(JSON.parse(storedData));
+            } else {
+              // Default to NO persistence/empty for the first time
+              setPolicy({
+                balanceThreshold: 1000,
+                enabled: false, // Start disabled!
+                useUSYC: true,
+                vaultAddress: '',
+                lastExecutionTime: 0,
+                cooldownPeriod: 24 * 3600
+              });
+            }
+          } else {
+            setPolicy(null);
+          }
         }
       } catch (e) {
         console.error(e);
@@ -42,6 +55,12 @@ export function VaultSummary() {
       }
     }
     load();
+
+    // Listen for mock updates
+    const handleStorageChange = () => load();
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+
   }, [activeWallet]);
 
   if (loading) {
