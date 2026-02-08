@@ -8,6 +8,7 @@ import gatewayRoutes from './api/routes/gateway.js';
 import treasuryRoutes from './api/routes/treasury.js';
 import walletRoutes from './api/routes/wallet.js';
 import circleRoutes from './api/routes/circle.js';
+import uniswapV4Routes from './api/routes/uniswap-v4.js';
 
 // Import middleware
 import { errorHandler } from './api/middleware/error-handler.js';
@@ -33,6 +34,7 @@ app.use('/api/gateway', gatewayRoutes);
 app.use('/api/treasury', treasuryRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/circle', circleRoutes);
+app.use('/api/uniswap-v4', uniswapV4Routes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -75,6 +77,12 @@ Available endpoints:
 
   GET    /api/wallet/status           - Wallet balances
   GET    /api/wallet/balances/:address
+
+  POST   /api/uniswap-v4/swap        - Execute swap
+  POST   /api/uniswap-v4/liquidity/add  - Add liquidity
+  POST   /api/uniswap-v4/liquidity/remove - Remove liquidity
+  GET    /api/uniswap-v4/position/:owner/:poolId/:tickLower/:tickUpper
+  GET    /api/uniswap-v4/pool-manager - Get pool manager
 
   GET    /health                      - Health check
   `);
