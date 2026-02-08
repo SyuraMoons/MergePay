@@ -59,10 +59,10 @@ export async function transferViaGateway(req: Request, res: Response) {
 
 export async function getGatewayBalance(req: Request, res: Response) {
   try {
-    const { privateKey, chains } = req.query;
+    const { privateKey, address, chains } = req.query;
 
-    if (!privateKey || typeof privateKey !== 'string') {
-      res.status(400).json({ success: false, error: 'privateKey is required' });
+    if (!privateKey && !address) {
+      res.status(400).json({ success: false, error: 'Either privateKey or address is required' });
       return;
     }
 
@@ -70,7 +70,16 @@ export async function getGatewayBalance(req: Request, res: Response) {
       ? (chains as string).split(',') as GatewayChain[]
       : undefined;
 
-    const result = await orchestrator.getGatewayBalance(privateKey, chainArray);
+    let result;
+    if (privateKey && typeof privateKey === 'string') {
+      result = await orchestrator.getGatewayBalance(privateKey, chainArray);
+    } else if (address && typeof address === 'string') {
+      result = await orchestrator.getGatewayBalanceByAddress(address, chainArray);
+    } else {
+      res.status(400).json({ success: false, error: 'Invalid parameters' });
+      return;
+    }
+
     res.json(result);
   } catch (error) {
     res.status(500).json({

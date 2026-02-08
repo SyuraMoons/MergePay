@@ -641,6 +641,39 @@ export class TransferOrchestrator {
     }
   }
 
+  /**
+   * Get Gateway balance across chains by address (read-only, no private key needed)
+   */
+  async getGatewayBalanceByAddress(
+    address: string,
+    chains: GatewayChain[] = ['sepolia', 'arc']
+  ): Promise<{ success: boolean; result?: GatewayBalanceResponse; error?: string }> {
+    try {
+      // Validate address format
+      if (!address || !address.startsWith('0x')) {
+        return { success: false, error: 'Invalid address format' };
+      }
+
+      const result = await this.balanceAggregator.getBalanceSummary(address as `0x${string}`, chains);
+
+      console.log('\n=== Gateway Balance (By Address) ===\n');
+      console.log(`Address: ${result.address}`);
+      console.log(`Total: $${(Number(result.totalBalance) / 1_000_000).toFixed(2)} USDC\n`);
+
+      for (const balance of result.balances) {
+        const usdcAmount = Number(balance.balance) / 1_000_000;
+        console.log(`  ${balance.chain}: $${usdcAmount.toFixed(2)} USDC`);
+      }
+      console.log('');
+
+      return { success: true, result };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`\n❌ Failed to get balance: ${errorMessage}\n`);
+      return { success: false, error: errorMessage };
+    }
+  }
+
 
 
 }
