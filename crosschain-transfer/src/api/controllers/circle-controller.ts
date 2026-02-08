@@ -89,6 +89,36 @@ export async function createUserToken(req: Request, res: Response) {
   }
 }
 
+/**
+ * POST /circle/users/social/token
+ * Generate device token for social login
+ */
+export async function createDeviceToken(req: Request, res: Response) {
+  try {
+    const { deviceId } = req.body;
+
+    if (!deviceId) {
+      res.status(400).json({
+        success: false,
+        error: 'deviceId is required',
+      });
+      return;
+    }
+
+    const result = await circleService.createDeviceToken(deviceId);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create device token',
+    });
+  }
+}
+
 // ============================================
 // WALLET CREATION
 // ============================================

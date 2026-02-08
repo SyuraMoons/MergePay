@@ -4,6 +4,7 @@ import {
   createUser,
   getUser,
   createUserToken,
+  createDeviceToken,
   // Wallet Creation
   createWalletWithPin,
   createWallet,
@@ -27,6 +28,7 @@ const router = Router();
 router.post('/users', createUser);
 router.get('/users/:userId', getUser);
 router.post('/users/token', createUserToken);
+router.post('/users/social/token', createDeviceToken);
 
 // ============================================
 // WALLET ROUTES

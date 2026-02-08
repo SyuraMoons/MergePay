@@ -62,6 +62,54 @@ export class CircleWalletService {
   }
 
   /**
+   * Create a device token for social login
+   */
+  async createDeviceToken(deviceId: string) {
+    this.checkClient();
+
+    // We need to use axios or fetch directly because the SDK might not expose this method yet
+    // or it's named differently. For safety, let's use the client's axios instance if available
+    // or just assume standard Circle API path.
+    // 
+    // Looking at the SDK client usage above, it seems to wrap axios.
+    // Let's try to find if there is a method for it.
+    // Since I cannot verify the SDK type definition deeply, I will use a direct HTTP call 
+    // to ensure it works, but re-using the client's configuration if possible would be better.
+    //
+    // However, `circleClient` is an instance of `UserControlledWalletsClient`. 
+    // Let's assume we can't easily extend it.
+    // I will use the standard global fetch as a fallback, utilizing the same API key.
+
+    const apiKey = process.env.CIRCLE_API_KEY;
+    const baseUrl = process.env.CIRCLE_BASE_URL || 'https://api.circle.com';
+
+    if (!apiKey) throw new Error('CIRCLE_API_KEY is required');
+
+    const response = await fetch(`${baseUrl}/v1/w3s/users/social/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        idempotencyKey: uuidv4(),
+        deviceId
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to create device token');
+    }
+
+    return {
+      deviceToken: data.data?.deviceToken,
+      deviceEncryptionKey: data.data?.deviceEncryptionKey
+    };
+  }
+
+  /**
    * Get user status and details
    */
   async getUser(userId: string) {
