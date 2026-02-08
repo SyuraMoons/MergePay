@@ -3,27 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useWalletContext } from '@/contexts/WalletContext';
 import { ActivePolicy } from '@/components/policies/ActivePolicy';
-import { VaultIcon } from '@/components/ui/icons/PolicyIcons';
 import { CreatePolicyModal } from '@/components/policies/CreatePolicyModal';
-import { PoolsInfo } from '@/components/policies/PoolsInfo';
-import { getTreasuryPolicy, canExecuteTreasuryPolicy } from '@/services/api/treasury';
-
-interface TreasuryPolicy {
-  balanceThreshold: number;
-  enabled: boolean;
-  autoMode: boolean;
-  vaultAddress: string;
-  allowUSDCPool: boolean;
-  allowUSDTPool: boolean;
-  lastExecutionTime: number;
-  cooldownPeriod: number;
-}
+import {
+  getTreasuryPolicy,
+  canExecuteTreasuryPolicy,
+  getUserUSYCPosition,
+  type TreasuryPolicyResponse,
+  type USYCPosition
+} from '@/services/api/treasury';
 
 export default function PoliciesPage() {
   const { wallets } = useWalletContext();
   const activeWallet = wallets.find(w => w.isActive);
 
-  const [policy, setPolicy] = useState<TreasuryPolicy | null>(null);
+  const [policy, setPolicy] = useState<TreasuryPolicyResponse | null>(null);
+  const [usycPosition, setUsycPosition] = useState<USYCPosition | null>(null);
   const [canExecute, setCanExecute] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -41,7 +35,9 @@ export default function PoliciesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      let policyData;
+
+      // Load policy data
+      let policyData: TreasuryPolicyResponse;
       try {
         policyData = await getTreasuryPolicy(activeWallet.address);
       } catch (e) {
@@ -49,19 +45,36 @@ export default function PoliciesPage() {
         policyData = {
           balanceThreshold: 1000,
           enabled: true,
-          autoMode: true,
-          vaultAddress: '0x123...abc',
-          allowUSDCPool: true,
-          allowUSDTPool: true,
+          useUSYC: true,
+          vaultAddress: '',
           lastExecutionTime: Date.now() / 1000 - 3600,
           cooldownPeriod: 24 * 3600
         };
       }
       setPolicy(policyData);
+
+      // Load USYC position if using USYC mode
+      if (policyData.useUSYC) {
+        try {
+          const position = await getUserUSYCPosition(activeWallet.address);
+          setUsycPosition(position);
+        } catch (e) {
+          console.warn('USYC position fetch failed, using mock data', e);
+          setUsycPosition({
+            principal: 5000,
+            usycShares: 4850,
+            currentValue: 5124.50,
+            yieldAccrued: 124.50
+          });
+        }
+      }
+
+      // Check execution status
       const execStatus = await canExecuteTreasuryPolicy(activeWallet.address).catch(() => ({ canExecute: true }));
       setCanExecute(execStatus.canExecute);
     } catch (err) {
       console.error('Failed to load policy:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load policy');
     } finally {
       setIsLoading(false);
     }
@@ -71,15 +84,20 @@ export default function PoliciesPage() {
   const isLocked = !activeWallet;
 
   // Mock policy for locked state visualization
-  const lockedPolicy: TreasuryPolicy = {
+  const lockedPolicy: TreasuryPolicyResponse = {
     balanceThreshold: 5000,
     enabled: true,
-    autoMode: true,
-    vaultAddress: '0x...',
-    allowUSDCPool: true,
-    allowUSDTPool: true,
+    useUSYC: true,
+    vaultAddress: '',
     lastExecutionTime: Date.now(),
     cooldownPeriod: 86400
+  };
+
+  const lockedPosition: USYCPosition = {
+    principal: 5000,
+    usycShares: 4850,
+    currentValue: 5124.50,
+    yieldAccrued: 124.50
   };
 
   if (isLoading && activeWallet) {
@@ -97,10 +115,12 @@ export default function PoliciesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in-up">
         <div>
-          <h1 className="text-3xl font-bold to-gray-900 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">
             Treasury Policies
           </h1>
-          <p className="text-gray-500 mt-2 text-lg">Automate your idle assets with smart yield strategies using Circle Gateway.</p>
+          <p className="text-gray-500 mt-2 text-lg">
+            Earn yield on idle USDC
+          </p>
         </div>
 
         <button
@@ -110,7 +130,7 @@ export default function PoliciesPage() {
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          {policy ? 'Update Policy' : 'Create New Policy'}
+          {policy ? 'Update Policy' : 'Create Policy'}
         </button>
       </div>
 
@@ -120,7 +140,6 @@ export default function PoliciesPage() {
         </div>
       )}
 
-      {/* Main Content */}
       {/* Main Content */}
       <div className="animate-fade-in-up relative" style={{ animationDelay: '0.1s' }}>
         {/* Locked State Overlay */}
@@ -133,12 +152,12 @@ export default function PoliciesPage() {
                 </svg>
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Connect to Manage Policies</h3>
-              <p className="text-gray-500 mb-6 text-sm">Unlock the full power of MergePay's automated treasury management strategies.</p>
-              {/* Note: The physical button in Header handles connection, but we can add a pointer here if needed. 
-                  Since we don't have direct access to 'connect' function here easily without context passthrough, 
-                  we'll rely on the global header button or add a specific connector triggers if needed. 
-                  For now, a visual prompt is good. */}
-              <div className="text-sm font-semibold text-[#F4673B]">Please connect your wallet in the top right</div>
+              <p className="text-gray-500 mb-6 text-sm">
+                Unlock automated treasury management with Circle USYC yield.
+              </p>
+              <div className="text-sm font-semibold text-[#F4673B]">
+                Please connect your wallet in the top right
+              </div>
             </div>
           </div>
         )}
@@ -147,6 +166,7 @@ export default function PoliciesPage() {
           <div className={isLocked ? 'blur-sm select-none pointer-events-none opacity-50 grayscale-[0.5]' : ''}>
             <ActivePolicy
               policy={isLocked ? lockedPolicy : policy!}
+              usycPosition={isLocked ? lockedPosition : usycPosition}
               canExecute={isLocked ? false : canExecute}
               onRefresh={loadPolicy}
               onEdit={() => setShowCreateModal(true)}
@@ -155,11 +175,13 @@ export default function PoliciesPage() {
         ) : (
           <div className="glass-card p-16 text-center border-2 border-dashed border-gray-200 hover:border-[#F4673B]/30 transition-colors group">
             <div className="w-24 h-24 mx-auto mb-6 rounded-3xl bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-              <VaultIcon className="w-12 h-12 text-[#F4673B]" />
+              <svg className="w-12 h-12 text-[#F4673B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">No Active Policy</h3>
             <p className="text-gray-500 mb-8 max-w-md mx-auto text-lg leading-relaxed">
-              Create a treasury policy to automatically sweep idle USDC into high-yield vaults when thresholds are met.
+              Create a treasury policy to automatically earn ~5% APY on idle USDC with Circle USYC.
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
@@ -171,19 +193,20 @@ export default function PoliciesPage() {
         )}
       </div>
 
-      {/* Pools Info Section */}
-      <div className="animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-        <PoolsInfo />
-      </div>
+      {/* USYC Info Section - REMOVED */}
 
       {/* Modal */}
       {showCreateModal && (
         <CreatePolicyModal
           existingPolicy={policy || undefined}
           onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
+          onSuccess={(newPolicy) => {
             setShowCreateModal(false);
-            loadPolicy();
+            setPolicy(newPolicy);
+            // Clear USYC position if switching to manual mode
+            if (!newPolicy.useUSYC) {
+              setUsycPosition(null);
+            }
           }}
         />
       )}

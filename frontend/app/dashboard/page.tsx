@@ -3,6 +3,7 @@
 import { TotalBalanceCard } from '@/components/dashboard/TotalBalanceCard';
 import { ChainIconsRow } from '@/components/dashboard/ChainIconsRow';
 import { useBalanceWebSocket } from '@/hooks/useBalanceWebSocket';
+import { useWalletContext } from '@/contexts/WalletContext';
 import { VaultSummary } from '@/components/dashboard/VaultSummary';
 import { TransactionItem } from '@/components/history/TransactionItem';
 import { AIAgentCard } from '@/components/dashboard/AIAgentCard';
@@ -10,7 +11,12 @@ import { MOCK_TRANSACTIONS } from '@/services/mockData';
 import Link from 'next/link';
 
 export default function DashboardPage() {
-  const { balances, isConnected, error } = useBalanceWebSocket(undefined, true);
+  const { activeWallet } = useWalletContext();
+  const { balances, isConnected: isSocketConnected, error } = useBalanceWebSocket(undefined, true);
+
+  // Use real wallet connection status for UI
+  const isWalletConnected = !!activeWallet;
+
   const recentTransactions = MOCK_TRANSACTIONS.slice(0, 5);
 
   if (error) {
@@ -47,7 +53,8 @@ export default function DashboardPage() {
             totalBalance={balances.totalBalance}
             targetBalance={100}
             symbol="USDC"
-            isUpdating={isConnected}
+            isUpdating={isSocketConnected}
+            isConnected={isWalletConnected}
           />
         </div>
 
@@ -58,28 +65,37 @@ export default function DashboardPage() {
 
         {/* AI Chatbot (Narrow) */}
         <div className="xl:col-span-3 flex flex-col">
-          <AIAgentCard />
+          <AIAgentCard isConnected={isWalletConnected} />
         </div>
       </div>
 
       {/* Middle Row: Networks Available */}
       <div className="glass-card px-6 py-4 animate-fade-in-up" style={{ animationDelay: '0.15s' }}>
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
+        {!isWalletConnected ? (
+          <div className="flex items-center justify-center gap-2 text-gray-500 py-1">
+            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm font-medium">Connect wallet to see available networks</span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <span className="text-sm font-semibold text-gray-700">Networks Available</span>
             </div>
-            <span className="text-sm font-semibold text-gray-700">Networks Available</span>
+            <div className="flex-1 overflow-x-auto">
+              <ChainIconsRow
+                chains={balances.chains}
+                onChainClick={(chainId) => console.log('Clicked:', chainId)}
+              />
+            </div>
           </div>
-          <div className="flex-1 overflow-x-auto">
-            <ChainIconsRow
-              chains={balances.chains}
-              onChainClick={(chainId) => console.log('Clicked:', chainId)}
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Bottom Row: Transaction Summary */}
@@ -102,9 +118,21 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-3">
-          {recentTransactions.length > 0 ? recentTransactions.map((tx) => (
-            <TransactionItem key={tx.id} {...tx} />
-          )) : (
+          {!isWalletConnected ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-gray-900">Wallet not connected</p>
+              <p className="text-xs text-gray-500 mt-1">Connect your wallet to view transactions</p>
+            </div>
+          ) : recentTransactions.length > 0 ? (
+            recentTransactions.map((tx) => (
+              <TransactionItem key={tx.id} {...tx} />
+            ))
+          ) : (
             <p className="text-gray-500 text-center py-4">No recent transactions</p>
           )}
         </div>
