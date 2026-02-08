@@ -14,8 +14,24 @@ const CHAINS: { id: GatewayChain; name: string }[] = [
   { id: 'avalanche', name: 'Avalanche Fuji' },
   { id: 'optimism', name: 'Optimism Sepolia' },
   { id: 'arbitrum', name: 'Arbitrum Sepolia' },
+  { id: 'sepolia', name: 'Ethereum Sepolia' },
+  { id: 'arc', name: 'Arc Testnet' },
+  { id: 'base', name: 'Base Sepolia' },
+  { id: 'avalanche', name: 'Avalanche Fuji' },
+  { id: 'optimism', name: 'Optimism Sepolia' },
+  { id: 'arbitrum', name: 'Arbitrum Sepolia' },
   { id: 'polygon', name: 'Polygon Amoy' },
 ];
+
+const CHAIN_CONFIG: Record<string, { name: string; color: string }> = {
+  sepolia: { name: 'Ethereum Sepolia', color: 'bg-blue-500' },
+  arc: { name: 'Arc Testnet', color: 'bg-purple-500' },
+  base: { name: 'Base Sepolia', color: 'bg-blue-600' },
+  avalanche: { name: 'Avalanche Fuji', color: 'bg-red-500' },
+  optimism: { name: 'Optimism Sepolia', color: 'bg-red-600' },
+  arbitrum: { name: 'Arbitrum Sepolia', color: 'bg-indigo-500' },
+  polygon: { name: 'Polygon Amoy', color: 'bg-purple-600' },
+};
 
 export function GatewayTransferForm() {
   const { address, isConnected } = useAccount();
@@ -27,10 +43,54 @@ export function GatewayTransferForm() {
   const [destinationChain, setDestinationChain] = useState<GatewayChain>('base');
 
   // Bridge Mode State
+  // Bridge Mode State
   const [showSourceModal, setShowSourceModal] = useState(false);
-  const [sourceChains, setSourceChains] = useState<any[]>([
-    { name: 'Base Sepolia', balance: 1000, amount: '500', color: 'bg-blue-500' }
-  ]);
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+  const [sourceChains, setSourceChains] = useState<any[]>([]);
+
+  // Fetch balances from backend
+  const fetchBalances = async () => {
+    if (!address) return;
+
+    try {
+      setIsLoadingBalances(true);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://mergepay-production.up.railway.app/api'}/gateway/balance?address=${address}`);
+      const data = await response.json();
+
+      if (data.success && data.result && data.result.balances) {
+        const mappedSources = data.result.balances
+          .filter((b: any) => BigInt(b.balance) > 0)
+          .map((b: any) => {
+            const config = CHAIN_CONFIG[b.chain] || { name: b.chain, color: 'bg-gray-500' };
+            const balanceUSDC = Number(b.balance) / 1_000_000;
+            return {
+              id: b.chain,
+              name: config.name,
+              balance: balanceUSDC,
+              amount: '', // Default to empty
+              color: config.color
+            };
+          });
+
+        // If we have sources, pre-fill the first one with a default amount if needed
+        if (mappedSources.length > 0 && sourceChains.length === 0) {
+          // For first load, maybe don't set amount, just show available
+        }
+
+        setSourceChains(mappedSources);
+      }
+    } catch (error) {
+      console.error('Failed to fetch balances:', error);
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      fetchBalances();
+    }
+  }, [address]);
 
   const handleAddSources = (newSources: any[]) => {
     // Merge new sources, keeping existing amounts if possible
@@ -139,26 +199,39 @@ export function GatewayTransferForm() {
 
             {/* Compact Source Chips / Rows */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-gray-700">Base Sepolia</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Bal: 1,000</span>
-                  <input type="text" className="w-20 text-right bg-gray-50 px-2 py-1 rounded-lg text-sm border-none focus:ring-1 focus:ring-[#F4673B]" placeholder="0.00" defaultValue="500" />
-                </div>
-              </div>
-              <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-gray-200 shadow-sm opacity-60">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 bg-indigo-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-gray-700">Arbitrum</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Bal: 500</span>
-                  <input type="text" disabled className="w-20 text-right bg-gray-50 px-2 py-1 rounded-lg text-sm border-none" placeholder="0.00" />
-                </div>
-              </div>
+              {isLoadingBalances ? (
+                <div className="text-center py-4 text-gray-500 text-sm">Loading balances...</div>
+              ) : sourceChains.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 text-sm">No USDC balances found on support chains</div>
+              ) : (
+                sourceChains.map((source, idx) => (
+                  <div key={idx} className={`flex items-center justify-between bg-white p-2 rounded-xl border border-gray-200 shadow-sm ${source.amount ? '' : 'opacity-80'}`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-5 h-5 ${source.color} rounded-full`}></div>
+                      <span className="text-sm font-medium text-gray-700">{source.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">Bal: {source.balance.toFixed(2)}</span>
+                      <input
+                        type="number"
+                        className="w-24 text-right bg-gray-50 px-2 py-1 rounded-lg text-sm border-none focus:ring-1 focus:ring-[#F4673B]"
+                        placeholder="0.00"
+                        value={source.amount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSourceChains(prev => prev.map((p, i) => i === idx ? { ...p, amount: val } : p));
+                          // Also update total amount
+                          const total = sourceChains.reduce((sum, p, i) => {
+                            const amt = i === idx ? val : p.amount;
+                            return sum + (Number(amt) || 0);
+                          }, 0);
+                          setAmount(total > 0 ? total.toString() : '');
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         ) : (
