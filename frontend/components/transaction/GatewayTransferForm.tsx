@@ -4,16 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { GatewayChain } from '@/types/gateway';
 import { useWalletContext } from '@/contexts/WalletContext';
-import { TransferIcon } from '@/components/ui/icons/TransactionIcons';
+import { TransferIcon, WalletBalanceIcon } from '@/components/ui/icons/TransactionIcons';
 import { AddSourceModal } from './AddSourceModal';
 
 const CHAINS: { id: GatewayChain; name: string }[] = [
-  { id: 'sepolia', name: 'Ethereum Sepolia' },
-  { id: 'arc', name: 'Arc Testnet' },
-  { id: 'base', name: 'Base Sepolia' },
-  { id: 'avalanche', name: 'Avalanche Fuji' },
-  { id: 'optimism', name: 'Optimism Sepolia' },
-  { id: 'arbitrum', name: 'Arbitrum Sepolia' },
   { id: 'sepolia', name: 'Ethereum Sepolia' },
   { id: 'arc', name: 'Arc Testnet' },
   { id: 'base', name: 'Base Sepolia' },
@@ -33,8 +27,13 @@ const CHAIN_CONFIG: Record<string, { name: string; color: string }> = {
   polygon: { name: 'Polygon Amoy', color: 'bg-purple-600' },
 };
 
+import { mockBalances } from '@/lib/mockData';
+import { MockStorageService, MockBalanceService } from '@/services/mockData';
+import { WalletGroup } from './AddSourceModal';
+
 export function GatewayTransferForm() {
   const { address, isConnected } = useAccount();
+  const { wallets } = useWalletContext(); // Use wallets from context
 
   // Form State
   const [mode, setMode] = useState<'transfer' | 'bridge'>('transfer');
@@ -43,54 +42,54 @@ export function GatewayTransferForm() {
   const [destinationChain, setDestinationChain] = useState<GatewayChain>('base');
 
   // Bridge Mode State
-  // Bridge Mode State
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [sourceChains, setSourceChains] = useState<any[]>([]);
+  const [availableWallets, setAvailableWallets] = useState<WalletGroup[]>([]);
 
-  // Fetch balances from backend
+  // Fetch balances (Mock for Demo)
   const fetchBalances = async () => {
-    if (!address) return;
+    setIsLoadingBalances(true);
 
-    try {
-      setIsLoadingBalances(true);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://mergepay-production.up.railway.app/api'}/gateway/balance?address=${address}`);
-      const data = await response.json();
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-      if (data.success && data.result && data.result.balances) {
-        const mappedSources = data.result.balances
-          .filter((b: any) => BigInt(b.balance) > 0)
-          .map((b: any) => {
-            const config = CHAIN_CONFIG[b.chain] || { name: b.chain, color: 'bg-gray-500' };
-            const balanceUSDC = Number(b.balance) / 1_000_000;
-            return {
-              id: b.chain,
-              name: config.name,
-              balance: balanceUSDC,
-              amount: '', // Default to empty
-              color: config.color
-            };
-          });
+    // Construct WalletGroup from mockBalances associated with the current wallet/demo
+    // In a real app, we'd fetch this from the backend.
+    // For the demo, we map the mockBalances to a "Demo Wallet".
+    const demoWallet: WalletGroup = {
+      id: 'demo-wallet-1',
+      name: 'Demo Wallet',
+      type: 'eoa',
+      chains: mockBalances.map(mb => ({
+        chainId: mb.chainId === 'base' ? 84532 : mb.chainId === 'arbitrum' ? 421614 : mb.chainId === 'polygon' ? 80002 : 0,
+        name: mb.chainName,
+        iconColor: mb.chainId === 'base' ? 'bg-blue-600' : mb.chainId === 'arbitrum' ? 'bg-indigo-500' : 'bg-purple-600',
+        balance: mb.balance,
+        gatewayKey: mb.chainId as GatewayChain // simplistic casting for demo
+      }))
+    };
 
-        // If we have sources, pre-fill the first one with a default amount if needed
-        if (mappedSources.length > 0 && sourceChains.length === 0) {
-          // For first load, maybe don't set amount, just show available
-        }
+    setAvailableWallets([demoWallet]);
 
-        setSourceChains(mappedSources);
-      }
-    } catch (error) {
-      console.error('Failed to fetch balances:', error);
-    } finally {
-      setIsLoadingBalances(false);
-    }
+    // Auto-populate sources for "Mock Aja" feeling - User requested immediate availability
+    setSourceChains(demoWallet.chains.map(c => ({
+      id: c.chainId,
+      name: c.name,
+      balance: c.balance,
+      amount: '', // start empty so they can type
+      color: c.iconColor,
+      address: '0x71C...9A23' // generic mock address for display
+    })));
+
+    setIsLoadingBalances(false);
   };
 
   useEffect(() => {
-    if (address) {
+    if (isConnected) {
       fetchBalances();
     }
-  }, [address]);
+  }, [isConnected]); // Re-fetch when connection changes
 
   const handleAddSources = (newSources: any[]) => {
     // Merge new sources, keeping existing amounts if possible
@@ -104,14 +103,11 @@ export function GatewayTransferForm() {
     setShowSourceModal(false);
   };
 
-  // Auto-fill recipient when switching to bridge mode
+  // Auto-fill recipient only if explicit bridge self mode (optional), 
+  // but we want multi-source pay to allows any recipient
   useEffect(() => {
-    if (mode === 'bridge' && address) {
-      setRecipient(address);
-    } else if (mode === 'transfer') {
-      setRecipient('');
-    }
-  }, [mode, address]);
+    // Only clear if empty
+  }, [mode]);
 
   // Status State
   const [status, setStatus] = useState<'idle' | 'signing' | 'processing' | 'success' | 'error'>('idle');
@@ -135,6 +131,42 @@ export function GatewayTransferForm() {
       // Success
       setTxHash(`0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`);
       setStatus('success');
+
+      // Update Balance (Mock)
+      if (mode === 'bridge') {
+        MockBalanceService.deductBalance(Number(amount)); // Multi-Source logic handled in service
+      } else {
+        // Assume paying from 'Arbitrum' as default source for demo if not specified, 
+        // or simplistic: just find where address matches.
+        // For this demo, let's assume 'Arbitrum' is the funding source for single transfers unless selected.
+        // Actually, looking at the UI, "Paying From" shows the user wallet. 
+        // Let's deduct from the chain with highest balance or just 'Base' for simplicity if not strictly defined.
+        // Better: Deduct from the *Source* chain. But the form has Destination Chain selector.
+        // The sender is the user. The user has funds on multiple chains.
+        // In "Transfer" mode, usually you pick a source chain.
+        // If the UI doesn't have source chain selector in Transfer mode, we'll default to deducting 'Base' or 'Arbitrum'.
+        // Let's use 'Arbitrum' as it has 4000.
+        MockBalanceService.deductBalance(Number(amount), 'arbitrum');
+      }
+
+      // Save Transaction to History (Mock)
+      const newTx = {
+        id: `tx-${Date.now()}`,
+        type: 'send', // Always 'send', regardless of mode/bridge, as it's a payment abstraction
+        from: '0x71C...9A23', // Mock sender
+        to: recipient || '0xRecipient...',
+        amount: amount || '0', // amount state holds the total in both modes
+        token: 'USDC',
+        chain: mode === 'bridge' ? 'Multi-Source Pay' : destinationChain.toUpperCase(),
+        chainId: 0, // Mock ID
+        status: 'completed',
+        timestamp: new Date(),
+        hash: `0x${Math.random().toString(16).slice(2)}`
+      };
+
+      // @ts-ignore - simplistic type match for demo behavior
+      MockStorageService.saveTransaction(newTx);
+
       setAmount(''); // Reset form
 
     } catch (e) {
@@ -154,9 +186,9 @@ export function GatewayTransferForm() {
 
   return (
     <div className="w-full max-w-lg mx-auto bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 overflow-hidden">
-      <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-transparent">
+      <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-transparent">
         <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-[#0052FF]/10 flex items-center justify-center text-[#0052FF] font-bold shadow-sm">
+          <div className="w-8 h-8 rounded-full bg-[#F4673B]/10 flex items-center justify-center text-[#F4673B] font-bold shadow-sm">
             <TransferIcon className="w-5 h-5" />
           </div>
           Circle Gateway Transfer
@@ -165,6 +197,15 @@ export function GatewayTransferForm() {
           Pay anyone on any chain from your unified balance.
         </p>
       </div>
+
+
+
+      {status === 'processing' && (
+        <div className="p-4 bg-[#F4673B]/10 text-[#F4673B] text-sm rounded-xl border border-[#F4673B]/20 flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-[#F4673B] border-t-transparent rounded-full animate-spin"></div>
+          Processing Gateway transfer... (Burning & Minting)
+        </div>
+      )}
 
       <div className="p-6 space-y-6">
         {/* Mode Toggle Chips */}
@@ -185,7 +226,7 @@ export function GatewayTransferForm() {
               : 'text-gray-500 hover:text-gray-700'
               }`}
           >
-            Bridge (Self)
+            Multi-Source Pay
           </button>
         </div>
 
@@ -288,15 +329,10 @@ export function GatewayTransferForm() {
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="0x..."
-                disabled={status !== 'idle' && status !== 'error' || mode === 'bridge'}
-                className={`w-full px-4 py-3.5 rounded-xl border border-gray-200 focus:border-[#F4673B] focus:ring-2 focus:ring-[#F4673B]/20 outline-none transition-all font-mono text-sm ${mode === 'bridge' ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : ''
-                  }`}
+                disabled={status !== 'idle' && status !== 'error'}
+                className={`w-full px-4 py-3.5 rounded-xl border border-gray-200 focus:border-[#F4673B] focus:ring-2 focus:ring-[#F4673B]/20 outline-none transition-all font-mono text-sm`}
               />
-              {mode === 'bridge' && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-medium pointer-events-none">
-                  Self
-                </div>
-              )}
+              {/* Removed Self label logic to allow any recipient */}
             </div>
           </div>
         </div>
@@ -312,24 +348,24 @@ export function GatewayTransferForm() {
         )}
 
         {status === 'processing' && (
-          <div className="p-4 bg-blue-50 text-blue-800 text-sm rounded-xl border border-blue-100 flex items-center gap-3">
-            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="p-4 bg-[#F4673B]/10 text-[#F4673B] text-sm rounded-xl border border-[#F4673B]/20 flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-[#F4673B] border-t-transparent rounded-full animate-spin"></div>
             Processing Gateway transfer... (Burning & Minting)
           </div>
         )}
 
         {status === 'success' && (
-          <div className="p-4 bg-green-50 text-green-800 text-sm rounded-xl border border-green-100 break-all space-y-2">
+          <div className="p-4 bg-[#F4673B]/10 text-[#F4673B] text-sm rounded-xl border border-[#F4673B]/20 break-all space-y-2">
             <div className="flex items-center gap-2 font-bold">
-              <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 text-[#F4673B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
               Transfer Successful!
             </div>
-            <p className="text-xs text-green-700 font-mono">Hash: {txHash}</p>
+            <p className="text-xs text-[#F4673B]/80 font-mono">Hash: {txHash}</p>
             <button
               onClick={resetState}
-              className="mt-2 text-xs font-semibold text-green-700 underline hover:text-green-800"
+              className="mt-2 text-xs font-semibold text-[#F4673B] underline hover:text-[#c44d28]"
             >
               Send Another
             </button>
@@ -365,7 +401,8 @@ export function GatewayTransferForm() {
         <AddSourceModal
           onClose={() => setShowSourceModal(false)}
           onAdd={handleAddSources}
-          currentSelection={[]} // Todo: pass actual selected keys
+          currentSelection={[]} // Todo: pass actual selected keys if needed for persistence
+          availableWallets={availableWallets}
         />
       )}
     </div>

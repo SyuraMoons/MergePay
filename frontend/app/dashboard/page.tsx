@@ -7,17 +7,57 @@ import { useWalletContext } from '@/contexts/WalletContext';
 import { VaultSummary } from '@/components/dashboard/VaultSummary';
 import { TransactionItem } from '@/components/history/TransactionItem';
 import { AIAgentCard } from '@/components/dashboard/AIAgentCard';
-import { MOCK_TRANSACTIONS } from '@/services/mockData';
+import { MOCK_TRANSACTIONS, MockStorageService, MockBalanceService } from '@/services/mockData';
+import { mockBalances as initialMockBalances, calculateTotalBalance } from '@/lib/mockData';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { ChainBalance } from '@/types/balance';
 
 export default function DashboardPage() {
   const { activeWallet } = useWalletContext();
-  const { balances, isConnected: isSocketConnected, error } = useBalanceWebSocket(undefined, true);
+  const { isConnected: isSocketConnected, error } = useBalanceWebSocket(undefined, true);
+
+  // Use MockBalanceService for consistent demo balances
+  const [currentBalances, setCurrentBalances] = useState<ChainBalance[]>(initialMockBalances);
+
+  useEffect(() => {
+    // Initial fetch
+    setCurrentBalances(MockBalanceService.getBalances());
+
+    // Listen for updates
+    const handleUpdate = () => {
+      setCurrentBalances(MockBalanceService.getBalances());
+    };
+
+    window.addEventListener('mock-balance-update', handleUpdate);
+    return () => window.removeEventListener('mock-balance-update', handleUpdate);
+  }, []);
+
+  const totalBalance = calculateTotalBalance(currentBalances);
+
+  const balances = {
+    totalBalance,
+    chains: currentBalances,
+    isLoading: false
+  };
 
   // Use real wallet connection status for UI
   const isWalletConnected = !!activeWallet;
 
-  const recentTransactions = MOCK_TRANSACTIONS.slice(0, 5);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Initial fetch
+    setRecentTransactions(MockStorageService.getTransactions().slice(0, 5));
+
+    // Listen for updates
+    const handleUpdate = () => {
+      setRecentTransactions(MockStorageService.getTransactions().slice(0, 5));
+    };
+
+    window.addEventListener('mock-transaction-update', handleUpdate);
+    return () => window.removeEventListener('mock-transaction-update', handleUpdate);
+  }, []);
 
   if (error) {
     return (
@@ -51,7 +91,7 @@ export default function DashboardPage() {
         <div className="xl:col-span-5 flex flex-col">
           <TotalBalanceCard
             totalBalance={balances.totalBalance}
-            targetBalance={100}
+            targetBalance={15000}
             symbol="USDC"
             isUpdating={isSocketConnected}
             isConnected={isWalletConnected}
@@ -81,8 +121,8 @@ export default function DashboardPage() {
         ) : (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="p-2 bg-[#F4673B]/10 rounded-lg">
+                <svg className="w-5 h-5 text-[#F4673B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
               </div>

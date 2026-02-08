@@ -4,23 +4,23 @@ export const mockBalances: ChainBalance[] = [
   {
     chainId: 'base',
     chainName: 'Base',
-    balance: 20.0,
+    balance: 3432.50,
     symbol: 'USDC',
     iconUrl: '/chains/base.svg',
   },
   {
     chainId: 'arbitrum',
     chainName: 'Arbitrum',
-    balance: 30.0,
+    balance: 4000.00,
     symbol: 'USDC',
     iconUrl: '/chains/arbitrum.svg',
   },
   {
-    chainId: 'optimism',
-    chainName: 'Optimism',
-    balance: 15.0,
+    chainId: 'polygon',
+    chainName: 'Polygon',
+    balance: 3000.00,
     symbol: 'USDC',
-    iconUrl: '/chains/optimism.svg',
+    iconUrl: '/chains/polygon.svg',
   },
 ];
 

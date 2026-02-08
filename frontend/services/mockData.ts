@@ -1,69 +1,96 @@
 import { Transaction } from '@/types/transaction';
 
-export const MOCK_TRANSACTIONS = [
-  {
-    id: '1',
-    type: 'receive' as const,
-    from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-    to: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    amount: '150.00',
-    token: 'USDC',
-    chain: 'Base',
-    chainId: 8453,
-    status: 'completed' as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-    hash: '0x123...abc',
+export const MOCK_TRANSACTIONS: Transaction[] = [];
+
+export const MockStorageService = {
+  STORAGE_KEY: 'demo_mock_transactions',
+
+  saveTransaction: (tx: Transaction) => {
+    if (typeof window === 'undefined') return;
+
+    const current = MockStorageService.getTransactions();
+    const updated = [tx, ...current];
+    sessionStorage.setItem(MockStorageService.STORAGE_KEY, JSON.stringify(updated));
+    // Dispatch event for real-time UI updates
+    window.dispatchEvent(new Event('mock-transaction-update'));
   },
-  {
-    id: '2',
-    type: 'send' as const,
-    from: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    to: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-    amount: '50.00',
-    token: 'USDC',
-    chain: 'Arbitrum',
-    chainId: 42161,
-    status: 'completed' as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-    hash: '0x456...def',
+
+  getTransactions: (): Transaction[] => {
+    if (typeof window === 'undefined') return [];
+
+    const stored = sessionStorage.getItem(MockStorageService.STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
   },
-  {
-    id: '3',
-    type: 'bridge' as const,
-    from: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    to: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    amount: '200.00',
-    token: 'USDC',
-    chain: 'Base -> Optimism',
-    chainId: 8453,
-    status: 'pending' as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-    hash: '0x789...ghi',
+
+  clear: () => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.removeItem(MockStorageService.STORAGE_KEY);
+    window.dispatchEvent(new Event('mock-transaction-update'));
+  }
+};
+
+import { ChainBalance } from '@/types/balance';
+import { mockBalances } from '@/lib/mockData';
+
+export const MockBalanceService = {
+  STORAGE_KEY: 'demo_mock_balances',
+
+  getBalances: (): ChainBalance[] => {
+    if (typeof window === 'undefined') return mockBalances;
+
+    const stored = sessionStorage.getItem(MockBalanceService.STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+
+    // Initialize if not present
+    sessionStorage.setItem(MockBalanceService.STORAGE_KEY, JSON.stringify(mockBalances));
+    return mockBalances;
   },
-  {
-    id: '4',
-    type: 'send' as const,
-    from: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    to: '0x1234567890123456789012345678901234567890',
-    amount: '75.50',
-    token: 'USDC',
-    chain: 'Polygon',
-    chainId: 137,
-    status: 'failed' as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    hash: '0xabc...xyz',
+
+  deductBalance: (amount: number, chainId?: string) => {
+    if (typeof window === 'undefined') return;
+
+    const currentBalances = MockBalanceService.getBalances();
+    const deductAmount = Number(amount);
+
+    let updatedBalances;
+
+    if (chainId) {
+      // Deduct from specific chain (e.g., standard transfer)
+      updatedBalances = currentBalances.map(b => {
+        if (b.chainId.toLowerCase() === chainId.toLowerCase()) {
+          return { ...b, balance: Math.max(0, b.balance - deductAmount) };
+        }
+        return b;
+      });
+    } else {
+      // Multi-Source Deduction (Bridge Mode)
+      // Simplistic algo: Deduct proportionally or just from the first available for demo
+      // Let's deduct from the one with most balance to be safe, or split.
+      // For demo simplicity: Deduct from Arbitrum then Base then Polygon
+      let remaining = deductAmount;
+      updatedBalances = currentBalances.map(b => {
+        if (remaining <= 0) return b;
+
+        if (b.balance >= remaining) {
+          const newBal = b.balance - remaining;
+          remaining = 0;
+          return { ...b, balance: newBal };
+        } else {
+          remaining -= b.balance;
+          return { ...b, balance: 0 };
+        }
+      });
+    }
+
+    sessionStorage.setItem(MockBalanceService.STORAGE_KEY, JSON.stringify(updatedBalances));
+    window.dispatchEvent(new Event('mock-balance-update'));
   },
-  {
-    id: '5',
-    type: 'receive' as const,
-    from: '0x9876543210987654321098765432109876543210',
-    to: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
-    amount: '300.00',
-    token: 'USDC',
-    chain: 'Base',
-    chainId: 8453,
-    status: 'completed' as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
-    hash: '0xdef...123',
-  },
-];
+
+  reset: () => {
+    if (typeof window === 'undefined') return;
+    sessionStorage.removeItem(MockBalanceService.STORAGE_KEY);
+    window.dispatchEvent(new Event('mock-balance-update'));
+  }
+};

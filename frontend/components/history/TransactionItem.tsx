@@ -17,9 +17,10 @@ export function TransactionItem({
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  const getRelativeTime = (date: Date) => {
+  const getRelativeTime = (date: Date | string) => {
+    const d = new Date(date);
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
+    const diff = now.getTime() - d.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
@@ -72,7 +73,7 @@ export function TransactionItem({
       case 'receive':
         return 'text-green-500 bg-green-50';
       case 'bridge':
-        return 'text-blue-500 bg-blue-50';
+        return 'text-[#F4673B] bg-[#F4673B]/10';
     }
   };
 

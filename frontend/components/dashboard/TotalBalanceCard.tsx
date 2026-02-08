@@ -89,7 +89,7 @@ export function TotalBalanceCard({
 
                 <div className="flex justify-between mt-2">
                   <span className="text-2xl font-bold text-gray-900">
-                    ${animatedBalance.toFixed(2)}
+                    ${animatedBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   <span className="text-sm text-gray-400">
                     /${targetBalance} {symbol}
@@ -139,12 +139,7 @@ export function TotalBalanceCard({
             </div>
           </div>
 
-          {isUpdating && (
-            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse-soft" />
-              <span className="text-sm text-gray-500">Live balance sync</span>
-            </div>
-          )}
+
         </>
       )}
     </div>

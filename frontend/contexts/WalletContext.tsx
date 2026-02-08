@@ -70,6 +70,50 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setError(null);
   }, []);
 
+  const addMockWallet = useCallback(() => {
+    const mockWallets = [
+      {
+        id: 'mock-1',
+        type: 'evm' as const,
+        address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+        chainId: 8453,
+        chainName: 'Base',
+        label: 'Demo Wallet (Base)',
+        isActive: false,
+        connector: 'metamask',
+      },
+      {
+        id: 'mock-2',
+        type: 'evm' as const,
+        address: '0x1234567890123456789012345678901234567890',
+        chainId: 42161,
+        chainName: 'Arbitrum',
+        label: 'Demo Wallet (Arb)',
+        isActive: false,
+        connector: 'walletconnect',
+      },
+      {
+        id: 'mock-3',
+        type: 'evm' as const,
+        address: '0x9876543210987654321098765432109876543210',
+        chainId: 137,
+        chainName: 'Polygon',
+        label: 'Demo Wallet (Poly)',
+        isActive: false,
+        connector: 'metamask',
+      }
+    ];
+
+    setWallets(prev => {
+      // Find next available mock wallet
+      const nextMock = mockWallets.find(m => !prev.some(p => p.address === m.address));
+
+      if (!nextMock) return prev; // All mocks added
+
+      return [...prev, { ...nextMock, isActive: prev.length === 0 }];
+    });
+  }, []);
+
   const value: WalletContextType = useMemo(() => ({
     wallets,
     activeWallet,
@@ -80,7 +124,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setActiveWallet,
     clearError,
     disconnectAll,
-  }), [wallets, activeWallet, isConnecting, error, addWallet, removeWallet, setActiveWallet, clearError, disconnectAll]);
+    addMockWallet,
+  }), [wallets, activeWallet, isConnecting, error, addWallet, removeWallet, setActiveWallet, clearError, disconnectAll, addMockWallet]);
 
   return (
     <WalletContext.Provider value={value}>

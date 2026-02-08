@@ -57,7 +57,7 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
     }
   }, [isOpen]);
 
-  const { addWallet, wallets } = useWalletContext();
+  const { addWallet, wallets, addMockWallet } = useWalletContext();
 
   // EVM Wallet
   const {
@@ -234,9 +234,9 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                         </p>
                         <p className="text-xs text-gray-500">Connect with browser extension</p>
                       </div>
-                        <svg className="w-5 h-5 text-gray-400 group-hover:text-[#F4673B] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-[#F4673B] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
                     </button>
 
                     {/* WalletConnect */}
@@ -270,9 +270,9 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                         </p>
                         <p className="text-xs text-gray-500">Scan with mobile wallet</p>
                       </div>
-                        <svg className="w-5 h-5 text-gray-400 group-hover:text-[#F4673B] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-[#F4673B] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
                     </button>
                   </div>
                 )}
@@ -280,6 +280,20 @@ export function WalletModal({ isOpen, onClose }: WalletModalProps) {
                 {evmError && (
                   <p className="mt-2 text-sm text-red-500">{evmError}</p>
                 )}
+
+                {/* DEMO MODE: Add Mock Wallet */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => {
+                      addMockWallet();
+                      // Optional: Switch to manage tab or close modal
+                      setActiveTab('manage');
+                    }}
+                    className="w-full py-2 text-sm text-gray-500 hover:text-[#F4673B] hover:bg-[#F4673B]/5 rounded-lg transition-colors border border-dashed border-gray-300 hover:border-[#F4673B]"
+                  >
+                    + Add Demo Wallet (Mock)
+                  </button>
+                </div>
               </div>
             </div>
           ) : (

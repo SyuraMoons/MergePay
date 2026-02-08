@@ -42,14 +42,34 @@ export default function PoliciesPage() {
         policyData = await getTreasuryPolicy(activeWallet.address);
       } catch (e) {
         console.warn('Backend policy fetch failed, using mock data for demo', e);
-        policyData = {
-          balanceThreshold: 1000,
-          enabled: true,
-          useUSYC: true,
-          vaultAddress: '',
-          lastExecutionTime: Date.now() / 1000 - 3600,
-          cooldownPeriod: 24 * 3600
-        };
+        // Check sessionStorage for demo persistence
+        if (typeof window !== 'undefined') {
+          const stored = sessionStorage.getItem('demo_policy_active');
+          const storedData = sessionStorage.getItem('demo_policy_data');
+
+          if (stored === 'true' && storedData) {
+            policyData = JSON.parse(storedData);
+          } else {
+            // Default to empty state
+            policyData = {
+              balanceThreshold: 1000,
+              enabled: false,
+              useUSYC: true,
+              vaultAddress: '',
+              lastExecutionTime: 0,
+              cooldownPeriod: 24 * 3600
+            };
+          }
+        } else {
+          policyData = {
+            balanceThreshold: 1000,
+            enabled: false,
+            useUSYC: true,
+            vaultAddress: '',
+            lastExecutionTime: 0,
+            cooldownPeriod: 24 * 3600
+          };
+        }
       }
       setPolicy(policyData);
 
@@ -61,10 +81,10 @@ export default function PoliciesPage() {
         } catch (e) {
           console.warn('USYC position fetch failed, using mock data', e);
           setUsycPosition({
-            principal: 5000,
-            usycShares: 4850,
-            currentValue: 5124.50,
-            yieldAccrued: 124.50
+            principal: 9000, // Roughly (10432.50 - 1000 threshold) rounded
+            usycShares: 8950,
+            currentValue: 9112.50, // Principal + Yield
+            yieldAccrued: 112.50   // ~1.25% earned so far
           });
         }
       }
@@ -94,10 +114,10 @@ export default function PoliciesPage() {
   };
 
   const lockedPosition: USYCPosition = {
-    principal: 5000,
-    usycShares: 4850,
-    currentValue: 5124.50,
-    yieldAccrued: 124.50
+    principal: 9000,
+    usycShares: 8950,
+    currentValue: 9112.50,
+    yieldAccrued: 112.50
   };
 
   if (isLoading && activeWallet) {

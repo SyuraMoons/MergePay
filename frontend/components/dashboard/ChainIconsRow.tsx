@@ -68,7 +68,7 @@ export function ChainIconsRow({ chains, onChainClick }: ChainIconsRowProps) {
             </span>
 
             <span className="text-sm text-gray-400">
-              ${chain.balance.toFixed(0)}
+              ${chain.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </button>
         );

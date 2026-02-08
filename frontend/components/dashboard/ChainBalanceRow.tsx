@@ -52,7 +52,7 @@ export function ChainBalanceRow({ chain, isUpdating = false }: ChainBalanceRowPr
 
         <div>
           <p className="font-semibold text-gray-900">
-            ${chain.balance.toFixed(2)}
+            ${chain.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-gray-400">{chain.symbol}</p>
         </div>
